@@ -8,7 +8,7 @@ df['Year'] = df['Year'].astype(int)
 df = df.sort_values('Year')
 
 # App title
-st.title("Malaysia Unemployment Rate (1991 - 2024)")
+st.title("Malaysia Annual Unemployment Rate (1991 - 2024)")
 
 # === 1. Show full table first ===
 st.subheader("Full Data Table")
@@ -18,7 +18,7 @@ st.dataframe(df, use_container_width=True)
 min_year = df['Year'].min()
 max_year = df['Year'].max()
 
-# === 3. Chart Controls come after filtered table ===
+# === 3. Chart Controls ===
 st.subheader("Chart Controls")
 
 # Chart type selector
@@ -30,34 +30,25 @@ chart_type = st.selectbox(
 # Duration selector including "All"
 duration_option = st.radio("How many years to display?", ["All", 10, 20, 30], horizontal=True)
 
-# Determine filtered data based on selection
+# === 4. Filter data based on selection ===
 if duration_option == "All":
     start_year = min_year
     end_year = max_year
     filtered_df = df.copy()
 else:
     duration = int(duration_option)
-    latest_valid_start = max_year - duration + 1
-    start_year_options = df[(df['Year'] >= min_year) & (df['Year'] <= latest_valid_start)]['Year'].unique()
-
-    # Start year selector only shown for numeric durations
-    start_year = st.select_slider(
-        f"Scroll to choose start year (showing {duration} years):",
-        options=start_year_options,
-        value=start_year_options[-1]
-    )
-    end_year = start_year + duration - 1
+    end_year = max_year
+    start_year = end_year - duration + 1
     filtered_df = df[(df['Year'] >= start_year) & (df['Year'] <= end_year)]
 
-# === 4. Show filtered data table ===
+# === 5. Show filtered data table ===
 st.subheader(f"Filtered Data Table: {start_year} – {end_year}")
 st.dataframe(filtered_df, use_container_width=True)
 
-# === 5. Show chart (modern version using Plotly) ===
+# === 6. Show chart (modern version using Plotly) ===
 st.markdown("---")
 st.subheader("Unemployment Rate Trend")
 
-# Use Plotly for modern interactive chart
 title = f"Unemployment Rate: {start_year} – {end_year}"
 
 if chart_type == "Line Chart":
@@ -69,7 +60,7 @@ elif chart_type == "Area Chart":
 elif chart_type == "Scatter Plot":
     fig = px.scatter(filtered_df, x="Year", y="Unemployment Rate", size_max=15, title=title, color_discrete_sequence=['red'])
 
-# Update layout for modern look
+# Update layout
 fig.update_layout(
     xaxis_title="Year",
     yaxis_title="Unemployment Rate (%)",
