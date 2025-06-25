@@ -2,72 +2,95 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# Load dataset
-df = pd.read_csv("MalaysiaUnemploymentRate.csv")
-df['Year'] = df['Year'].astype(int)
-df = df.sort_values('Year')
+# === 1. Load dataset ===
+df = pd.read_csv("MalaysiaQuarterlyLabourForce.csv")
 
-# App title
-st.title("Malaysia Annual Unemployment Rate (1991 - 2024)")
+# Convert 'date' to datetime
+df['date'] = pd.to_datetime(df['date'])
 
-# === 1. Show full table first ===
-st.subheader("Full Data Table")
-st.dataframe(df, use_container_width=True)
+# Extract year
+df['year'] = df['date'].dt.year
 
-# === 2. Setup parameters for filtering ===
-min_year = df['Year'].min()
-max_year = df['Year'].max()
+# === 2. Calculate average unemployment rate per year with count of quarters ===
+annual_stats = df.groupby('year')['u_rate'].agg(['mean', 'count']).reset_index()
+annual_stats.columns = ['year', 'Average Unemployment Rate', 'Number of Quarters']
+annual_stats['Average Unemployment Rate'] = annual_stats['Average Unemployment Rate'].round(2)
 
-# === 3. Chart Controls ===
+# === 3. App Title ===
+st.title("📉 Malaysia Annual Average Unemployment Rate")
+
+# === 4. Controls ===
 st.subheader("Chart Controls")
 
-# Chart type selector
-chart_type = st.selectbox(
-    "Choose chart type:",
-    ["Line Chart", "Bar Chart", "Area Chart", "Scatter Plot"]
-)
+# Chart type
+chart_type = st.selectbox("📊 Choose chart type:", ["Line Chart", "Bar Chart", "Area Chart", "Scatter Plot"])
 
-# Duration selector including "All"
-duration_option = st.radio("How many years to display?", ["All", 10, 20, 30], horizontal=True)
+# Trendline toggle
+show_trendline = st.checkbox("📈 Add trendline (OLS) — for Scatter Plot only")
 
-# === 4. Filter data based on selection ===
-if duration_option == "All":
-    start_year = min_year
-    end_year = max_year
-    filtered_df = df.copy()
+# Year range selector
+min_year = int(annual_stats['year'].min())
+max_year = int(annual_stats['year'].max())
+start_year, end_year = st.slider("📆 Select year range:", min_year, max_year, (min_year, max_year))
+
+# Filter by year range
+filtered_df = annual_stats[(annual_stats['year'] >= start_year) & (annual_stats['year'] <= end_year)]
+
+# === 5. Summary Stats ===
+if not filtered_df.empty:
+    highest = filtered_df.loc[filtered_df['Average Unemployment Rate'].idxmax()]
+    lowest = filtered_df.loc[filtered_df['Average Unemployment Rate'].idxmin()]
+    st.markdown(f"🔺 **Highest Rate**: {highest['Average Unemployment Rate']}% in {int(highest['year'])}")
+    st.markdown(f"🔻 **Lowest Rate**: {lowest['Average Unemployment Rate']}% in {int(lowest['year'])}")
 else:
-    duration = int(duration_option)
-    end_year = max_year
-    start_year = end_year - duration + 1
-    filtered_df = df[(df['Year'] >= start_year) & (df['Year'] <= end_year)]
+    st.warning("No data available for selected year range.")
 
-# === 5. Show filtered data table ===
-st.subheader(f"Filtered Data Table: {start_year} – {end_year}")
-st.dataframe(filtered_df, use_container_width=True)
+# === 6. Data Table ===
+st.subheader(f"📄 Average Annual Unemployment Rate ({start_year} – {end_year})")
 
-# === 6. Show chart (modern version using Plotly) ===
+table_df = filtered_df.reset_index(drop=True)
+table_df.index = table_df.index + 1  # Start index from 1
+st.dataframe(table_df, use_container_width=True)
+
+# Download CSV
+csv = table_df.to_csv(index=False).encode('utf-8')
+st.download_button("⬇️ Download as CSV", data=csv, file_name="annual_unemployment.csv", mime="text/csv")
+
+# === 7. Chart ===
 st.markdown("---")
-st.subheader("Unemployment Rate Trend")
+st.subheader("📈 Unemployment Rate Trend")
 
-title = f"Unemployment Rate: {start_year} – {end_year}"
+title = f"Annual Average Unemployment Rate ({start_year} – {end_year})"
 
 if chart_type == "Line Chart":
-    fig = px.line(filtered_df, x="Year", y="Unemployment Rate", markers=True, title=title)
+    fig = px.line(
+        filtered_df, x="year", y="Average Unemployment Rate",
+        markers=True, title=title
+    )
 elif chart_type == "Bar Chart":
-    fig = px.bar(filtered_df, x="Year", y="Unemployment Rate", title=title, color_discrete_sequence=['skyblue'])
+    fig = px.bar(
+        filtered_df, x="year", y="Average Unemployment Rate",
+        title=title, color_discrete_sequence=['skyblue']
+    )
 elif chart_type == "Area Chart":
-    fig = px.area(filtered_df, x="Year", y="Unemployment Rate", title=title, color_discrete_sequence=['lightgreen'])
+    fig = px.area(
+        filtered_df, x="year", y="Average Unemployment Rate",
+        title=title, color_discrete_sequence=['lightgreen']
+    )
 elif chart_type == "Scatter Plot":
-    fig = px.scatter(filtered_df, x="Year", y="Unemployment Rate", size_max=15, title=title, color_discrete_sequence=['red'])
+    trend = "ols" if show_trendline else None
+    fig = px.scatter(
+        filtered_df, x="year", y="Average Unemployment Rate",
+        title=title, trendline=trend, color_discrete_sequence=['orange'], size_max=15
+    )
 
-# Update layout
 fig.update_layout(
     xaxis_title="Year",
     yaxis_title="Unemployment Rate (%)",
     title_font_size=18,
+    font=dict(size=14),
     plot_bgcolor='rgba(0,0,0,0)',
     paper_bgcolor='rgba(0,0,0,0)',
-    font=dict(size=14),
     margin=dict(l=40, r=40, t=60, b=40),
 )
 
