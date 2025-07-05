@@ -132,7 +132,9 @@ with tab2:
     st.plotly_chart(season_fig, use_container_width=True)
 
     st.subheader("📊 Autocorrelation Plot (ACF)")
-    fig_acf = sm.graphics.tsa.plot_acf(series, lags=40)
+    # Calculate appropriate lag size (max 50% of sample size)
+    max_lags = min(40, len(series) // 2 - 1)
+    fig_acf = sm.graphics.tsa.plot_acf(series, lags=max_lags)
     st.pyplot(fig_acf.figure)
 
     st.info(f"📌 Seasonality strength: `{seasonality_strength:.3f}`")
@@ -147,7 +149,7 @@ with tab3:
     st.plotly_chart(resid_fig, use_container_width=True)
 
     st.subheader("🔁 Autocorrelation of Residuals (ACF)")
-    fig_acf_resid = sm.graphics.tsa.plot_acf(residuals, lags=40)
+    fig_acf_resid = sm.graphics.tsa.plot_acf(residuals, lags=max_lags)
     st.pyplot(fig_acf_resid.figure)
 
 # === Tab 4: ARIMA Model Summary ===

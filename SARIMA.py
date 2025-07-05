@@ -208,28 +208,33 @@ with tab2:
     # ACF and PACF plots
     st.subheader("📊 Autocorrelation Analysis")
     
+    # Calculate appropriate lag size (max 50% of sample size)
+    max_lags = min(40, len(series) // 2 - 1)
+    
     col1, col2 = st.columns(2)
     
     with col1:
         st.markdown("**🔁 Autocorrelation Function (ACF)**")
-        fig_acf = sm.graphics.tsa.plot_acf(series, lags=40)
+        fig_acf = sm.graphics.tsa.plot_acf(series, lags=max_lags)
         st.pyplot(fig_acf.figure)
-        st.markdown("""
+        st.markdown(f"""
         **ACF Interpretation:**
         - **Spikes at lag 4, 8, 12...**: Strong quarterly seasonality
         - **Gradual decay**: Trend component present
         - **Sharp cutoff**: MA component suggested
+        - **Lags shown**: {max_lags} (adjusted for sample size)
         """)
     
     with col2:
         st.markdown("**📉 Partial Autocorrelation Function (PACF)**")
-        fig_pacf = sm.graphics.tsa.plot_pacf(series, lags=40)
+        fig_pacf = sm.graphics.tsa.plot_pacf(series, lags=max_lags)
         st.pyplot(fig_pacf.figure)
-        st.markdown("""
+        st.markdown(f"""
         **PACF Interpretation:**
         - **Spikes at lag 4, 8, 12...**: Seasonal AR component needed
         - **Gradual decay**: AR component suggested
         - **Sharp cutoff**: AR order identification
+        - **Lags shown**: {max_lags} (adjusted for sample size)
         """)
 
 # === Tab 3: Residual Analysis ===
@@ -261,24 +266,26 @@ with tab3:
     
     with col1:
         st.markdown("**🔁 Residual ACF**")
-        fig_acf_resid = sm.graphics.tsa.plot_acf(residuals, lags=40)
+        fig_acf_resid = sm.graphics.tsa.plot_acf(residuals, lags=max_lags)
         st.pyplot(fig_acf_resid.figure)
-        st.markdown("""
+        st.markdown(f"""
         **Good signs:**
         - No significant spikes (white noise)
         - No seasonal patterns remaining
         - Model captures all time dependencies
+        - **Lags shown**: {max_lags} (adjusted for sample size)
         """)
     
     with col2:
         st.markdown("**📉 Residual PACF**")
-        fig_pacf_resid = sm.graphics.tsa.plot_pacf(residuals, lags=40)
+        fig_pacf_resid = sm.graphics.tsa.plot_pacf(residuals, lags=max_lags)
         st.pyplot(fig_pacf_resid.figure)
-        st.markdown("""
+        st.markdown(f"""
         **Good signs:**
         - No significant spikes
         - No partial autocorrelation
         - Model specification is adequate
+        - **Lags shown**: {max_lags} (adjusted for sample size)
         """)
 
     # Residual normality
