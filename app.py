@@ -14,6 +14,12 @@ pages = {
 
     "Machine Learning Models": [
         st.Page("RandonForest.py", title="Random Forest"),
+        st.Page("XGBoost.py", title="XGBoost"),
+        st.Page("SVR.py", title="Support Vector Regression"),
+    ],
+
+    "Model Comparison": [
+        st.Page("ModelComparison.py", title="Model Performance Comparison"),
     ],
 
     "About": [

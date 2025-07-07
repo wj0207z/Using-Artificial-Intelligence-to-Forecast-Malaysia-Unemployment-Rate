@@ -1,7 +1,12 @@
 streamlit
 pandas
+numpy
 plotly
 streamlit-lottie
 requests
 pmdarima
 statsmodels
+scikit-learn
+xgboost
+matplotlib
+scipy
