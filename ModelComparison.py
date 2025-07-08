@@ -71,6 +71,7 @@ st.markdown(f"""
 # Split the data
 train_series = series[:train_size]
 test_series = series[train_size:]
+test_series.index = pd.to_datetime(test_series.index).strftime('%Y-%m-%d')
 
 # === Model Configuration ===
 st.markdown("### ⚙️ Model Configuration")

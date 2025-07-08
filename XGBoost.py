@@ -50,13 +50,55 @@ This app uses advanced feature engineering and XGBoost's superior performance fo
 col1, col2 = st.columns(2)
 with col1:
     n_estimators = st.slider("Number of Trees:", min_value=50, max_value=500, value=200, step=50)
-    max_depth = st.slider("Max Tree Depth:", min_value=3, max_value=10, value=6, step=1)
-    learning_rate = st.slider("Learning Rate:", min_value=0.01, max_value=0.3, value=0.1, step=0.01)
+    with st.popover("❓"):
+        st.markdown("""
+        **Number of Trees**
+        The number of boosting rounds (trees) in XGBoost.
+        - More trees can improve accuracy but increase computation time.
+        - Too many trees may lead to overfitting.
+        """)
+    max_depth = st.slider("Max Tree Depth:", min_value=3, max_value=20, value=6, step=1)
+    with st.popover("❓"):
+        st.markdown("""
+        **Max Tree Depth**
+        The maximum depth of each tree.
+        - Deeper trees can capture more complex patterns but may overfit.
+        - Shallower trees are more general but may underfit.
+        """)
+    learning_rate = st.slider("Learning Rate:", min_value=0.01, max_value=0.5, value=0.1, step=0.01)
+    with st.popover("❓"):
+        st.markdown("""
+        **Learning Rate**
+        Step size shrinkage used in update to prevent overfitting.
+        - Lower values make the model more robust but require more trees.
+        - Higher values speed up learning but may overfit.
+        """)
 
 with col2:
+    subsample = st.slider("Subsample Ratio:", min_value=0.5, max_value=1.0, value=1.0, step=0.05)
+    with st.popover("❓"):
+        st.markdown("""
+        **Subsample Ratio**
+        The fraction of samples used for fitting each tree.
+        - Lower values can help prevent overfitting.
+        - Too low may underfit.
+        """)
     n_lags = st.slider("Number of Lag Features:", min_value=4, max_value=12, value=8, step=1)
+    with st.popover("❓"):
+        st.markdown("""
+        **Number of Lag Features**
+        The number of previous quarters used as input features.
+        - More lags can help capture longer-term dependencies.
+        - Too many lags may add noise or cause overfitting.
+        """)
     include_seasonal = st.checkbox("Include Seasonal Features", value=True)
-    subsample = st.slider("Subsample Ratio:", min_value=0.6, max_value=1.0, value=0.8, step=0.1)
+    with st.popover("❓"):
+        st.markdown("""
+        **Include Seasonal Features**
+        Adds features to help the model learn quarterly (seasonal) patterns.
+        - Useful for data with strong seasonality.
+        - May not help if data is not seasonal.
+        """)
 
 # === Feature Engineering ===
 def create_features(series, n_lags, include_seasonal=True):
@@ -223,6 +265,7 @@ forecast_values = generate_forecast(xgb_model, last_features, n_periods)
 # Forecast dates
 last_date = series.index[-1]
 forecast_dates = pd.date_range(start=last_date + pd.offsets.QuarterBegin(), periods=n_periods, freq='Q')
+forecast_dates = forecast_dates.strftime('%Y-%m-%d')
 
 # Calculate confidence intervals using model variance
 forecast_std = np.std(residuals)
@@ -235,6 +278,7 @@ forecast_df = pd.DataFrame({
     "Lower CI": conf_int_lower,
     "Upper CI": conf_int_upper
 })
+forecast_df["Forecast Date"] = pd.to_datetime(forecast_df["Forecast Date"]).dt.strftime('%Y-%m-%d')
 
 # === Tabs ===
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -267,8 +311,10 @@ with tab1:
     
     # Forecast visualization
     actual_df = series.reset_index().rename(columns={"date": "Date", selected_metric: selected_metric_label})
+    actual_df["Date"] = pd.to_datetime(actual_df["Date"]).dt.strftime('%Y-%m-%d')
     forecast_df_renamed = forecast_df.rename(columns={"Forecast Date": "Date", f"Forecasted {selected_metric_label}": selected_metric_label})
     combined = pd.concat([actual_df, forecast_df_renamed], axis=0)
+    combined["Date"] = pd.to_datetime(combined["Date"]).dt.strftime('%Y-%m-%d')
 
     fig = px.line(combined, x="Date", y=selected_metric_label, title="XGBoost Forecast vs Actual")
     fig.add_scatter(x=forecast_df["Forecast Date"], y=forecast_df["Upper CI"],

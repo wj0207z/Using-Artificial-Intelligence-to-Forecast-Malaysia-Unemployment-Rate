@@ -50,11 +50,39 @@ This app uses advanced feature engineering to capture time series patterns in yo
 col1, col2 = st.columns(2)
 with col1:
     n_estimators = st.slider("Number of Trees:", min_value=50, max_value=500, value=200, step=50)
+    with st.popover("❓"):
+        st.markdown("""
+        **Number of Trees**
+        The number of decision trees in the Random Forest.
+        - More trees can improve accuracy but increase computation time.
+        - Too many trees may lead to diminishing returns.
+        """)
     max_depth = st.slider("Max Tree Depth:", min_value=3, max_value=20, value=10, step=1)
+    with st.popover("❓"):
+        st.markdown("""
+        **Max Tree Depth**
+        The maximum depth of each decision tree.
+        - Deeper trees can capture more complex patterns but may overfit.
+        - Shallower trees are more general but may underfit.
+        """)
 
 with col2:
     n_lags = st.slider("Number of Lag Features:", min_value=4, max_value=12, value=8, step=1)
+    with st.popover("❓"):
+        st.markdown("""
+        **Number of Lag Features**
+        The number of previous quarters used as input features.
+        - More lags can help capture longer-term dependencies.
+        - Too many lags may add noise or cause overfitting.
+        """)
     include_seasonal = st.checkbox("Include Seasonal Features", value=True)
+    with st.popover("❓"):
+        st.markdown("""
+        **Include Seasonal Features**
+        Adds features to help the model learn quarterly (seasonal) patterns.
+        - Useful for data with strong seasonality.
+        - May not help if data is not seasonal.
+        """)
 
 # === Feature Engineering ===
 def create_features(series, n_lags, include_seasonal=True):
@@ -179,6 +207,7 @@ forecast_values = generate_forecast(rf_model, last_features, n_periods)
 # Forecast dates
 last_date = series.index[-1]
 forecast_dates = pd.date_range(start=last_date + pd.offsets.QuarterBegin(), periods=n_periods, freq='Q')
+forecast_dates = forecast_dates.strftime('%Y-%m-%d')
 
 # Calculate confidence intervals using model variance
 forecast_std = np.std(residuals)
@@ -191,6 +220,9 @@ forecast_df = pd.DataFrame({
     "Lower CI": conf_int_lower,
     "Upper CI": conf_int_upper
 })
+
+# Format all date columns to string (YYYY-MM-DD)
+forecast_df["Forecast Date"] = pd.to_datetime(forecast_df["Forecast Date"]).dt.strftime('%Y-%m-%d')
 
 # === Tabs ===
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -221,8 +253,10 @@ with tab1:
     
     # Forecast visualization
     actual_df = series.reset_index().rename(columns={"date": "Date", selected_metric: selected_metric_label})
+    actual_df["Date"] = pd.to_datetime(actual_df["Date"]).dt.strftime('%Y-%m-%d')
     forecast_df_renamed = forecast_df.rename(columns={"Forecast Date": "Date", f"Forecasted {selected_metric_label}": selected_metric_label})
     combined = pd.concat([actual_df, forecast_df_renamed], axis=0)
+    combined["Date"] = pd.to_datetime(combined["Date"]).dt.strftime('%Y-%m-%d')
 
     fig = px.line(combined, x="Date", y=selected_metric_label, title="Random Forest Forecast vs Actual")
     fig.add_scatter(x=forecast_df["Forecast Date"], y=forecast_df["Upper CI"],
@@ -230,6 +264,7 @@ with tab1:
     fig.add_scatter(x=forecast_df["Forecast Date"], y=forecast_df["Lower CI"],
                     mode="lines", name="Lower CI", fill='tonexty',
                     fillcolor='rgba(0,100,80,0.2)', line=dict(width=0), showlegend=False)
+    fig.update_xaxes(type='category')
     st.plotly_chart(fig, use_container_width=True)
 
     # Performance metrics

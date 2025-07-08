@@ -49,25 +49,79 @@ This app uses advanced feature engineering and kernel selection to capture compl
 # Model parameters
 col1, col2 = st.columns(2)
 with col1:
-    kernel = st.selectbox("Kernel Function:", ["rbf", "linear", "poly", "sigmoid"], 
-                         help="RBF is usually best for non-linear patterns")
-    C = st.slider("Regularization Parameter (C):", min_value=0.1, max_value=100.0, value=1.0, step=0.1,
-                  help="Controls trade-off between accuracy and generalization")
+    kernel = st.selectbox("Kernel Function:", ["rbf", "linear", "poly", "sigmoid"], help="RBF is usually best for non-linear patterns")
+    with st.popover("❓"):
+        st.markdown("""
+        **Kernel Function**
+        The function used to map input data into higher-dimensional space.
+        - RBF: Good for non-linear patterns (default).
+        - Linear: For linear relationships.
+        - Poly: For polynomial relationships.
+        - Sigmoid: For S-shaped patterns.
+        """)
+    C = st.slider("Regularization Parameter (C):", min_value=0.1, max_value=100.0, value=1.0, step=0.1, help="Controls trade-off between accuracy and generalization")
+    with st.popover("❓"):
+        st.markdown("""
+        **Regularization Parameter (C)**
+        Controls the trade-off between fitting the training data and model complexity.
+        - Lower C: More regularization, simpler model.
+        - Higher C: Less regularization, fits training data more closely.
+        """)
 
 with col2:
-    epsilon = st.slider("Epsilon (ε):", min_value=0.01, max_value=1.0, value=0.1, step=0.01,
-                       help="Defines the margin of tolerance where no penalty is given to errors")
+    epsilon = st.slider("Epsilon (ε):", min_value=0.01, max_value=1.0, value=0.1, step=0.01, help="Defines the margin of tolerance where no penalty is given to errors")
+    with st.popover("❓"):
+        st.markdown("""
+        **Epsilon (ε)**
+        Defines the margin of tolerance where no penalty is given to errors.
+        - Larger ε: More tolerance to errors, simpler model.
+        - Smaller ε: Less tolerance, more sensitive to errors.
+        """)
     n_lags = st.slider("Number of Lag Features:", min_value=4, max_value=12, value=8, step=1)
+    with st.popover("❓"):
+        st.markdown("""
+        **Number of Lag Features**
+        The number of previous quarters used as input features.
+        - More lags can help capture longer-term dependencies.
+        - Too many lags may add noise or cause overfitting.
+        """)
 
 # Additional parameters for specific kernels
 if kernel == "rbf":
-    gamma = st.selectbox("Gamma:", ["scale", "auto", 0.1, 0.01, 0.001], 
-                        help="Kernel coefficient for RBF, poly and sigmoid")
+    gamma = st.selectbox("Gamma:", ["scale", "auto", 0.1, 0.01, 0.001], help="Kernel coefficient for RBF, poly and sigmoid")
+    with st.popover("❓"):
+        st.markdown("""
+        **Gamma**
+        Kernel coefficient for RBF, poly, and sigmoid kernels.
+        - Higher gamma: More complex model, can overfit.
+        - Lower gamma: Simpler model, may underfit.
+        """)
 elif kernel == "poly":
     degree = st.slider("Polynomial Degree:", min_value=2, max_value=5, value=3, step=1)
+    with st.popover("❓"):
+        st.markdown("""
+        **Polynomial Degree**
+        The degree of the polynomial kernel.
+        - Higher degree: More complex polynomial relationships.
+        - Lower degree: Simpler relationships.
+        """)
     gamma = st.selectbox("Gamma:", ["scale", "auto", 0.1, 0.01, 0.001])
+    with st.popover("❓"):
+        st.markdown("""
+        **Gamma**
+        Kernel coefficient for RBF, poly, and sigmoid kernels.
+        - Higher gamma: More complex model, can overfit.
+        - Lower gamma: Simpler model, may underfit.
+        """)
 
 include_seasonal = st.checkbox("Include Seasonal Features", value=True)
+with st.popover("❓"):
+    st.markdown("""
+    **Include Seasonal Features**
+    Adds features to help the model learn quarterly (seasonal) patterns.
+    - Useful for data with strong seasonality.
+    - May not help if data is not seasonal.
+    """)
 
 # === Feature Engineering ===
 def create_features(series, n_lags, include_seasonal=True):
@@ -238,6 +292,7 @@ forecast_values = generate_forecast(svr_model, scaler, last_features, n_periods)
 # Forecast dates
 last_date = series.index[-1]
 forecast_dates = pd.date_range(start=last_date + pd.offsets.QuarterBegin(), periods=n_periods, freq='Q')
+forecast_dates = forecast_dates.strftime('%Y-%m-%d')
 
 # Calculate confidence intervals using model variance
 forecast_std = np.std(residuals)
@@ -250,6 +305,7 @@ forecast_df = pd.DataFrame({
     "Lower CI": conf_int_lower,
     "Upper CI": conf_int_upper
 })
+forecast_df["Forecast Date"] = pd.to_datetime(forecast_df["Forecast Date"]).dt.strftime('%Y-%m-%d')
 
 # === Tabs ===
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -290,8 +346,10 @@ with tab1:
     
     # Forecast visualization
     actual_df = series.reset_index().rename(columns={"date": "Date", selected_metric: selected_metric_label})
+    actual_df["Date"] = pd.to_datetime(actual_df["Date"]).dt.strftime('%Y-%m-%d')
     forecast_df_renamed = forecast_df.rename(columns={"Forecast Date": "Date", f"Forecasted {selected_metric_label}": selected_metric_label})
     combined = pd.concat([actual_df, forecast_df_renamed], axis=0)
+    combined["Date"] = pd.to_datetime(combined["Date"]).dt.strftime('%Y-%m-%d')
 
     fig = px.line(combined, x="Date", y=selected_metric_label, title="SVR Forecast vs Actual")
     fig.add_scatter(x=forecast_df["Forecast Date"], y=forecast_df["Upper CI"],

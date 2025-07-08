@@ -65,12 +65,14 @@ model = pm.auto_arima(
 forecast, conf_int = model.predict(n_periods=n_periods, return_conf_int=True)
 last_date = series.index[-1]
 forecast_dates = pd.date_range(start=last_date + pd.offsets.QuarterBegin(), periods=n_periods, freq='Q')
+forecast_dates = forecast_dates.strftime('%Y-%m-%d')
 forecast_df = pd.DataFrame({
     "Forecast Date": forecast_dates,
     f"Forecasted {selected_metric_label}": forecast,
     "Lower CI": conf_int[:, 0],
     "Upper CI": conf_int[:, 1]
 })
+forecast_df["Forecast Date"] = pd.to_datetime(forecast_df["Forecast Date"]).dt.strftime('%Y-%m-%d')
 
 # === Residuals ===
 residuals = pd.Series(model.resid())
@@ -92,8 +94,10 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 with tab1:
     st.title(f"📈 Forecast for {selected_metric_label}")
     actual_df = series.reset_index().rename(columns={"date": "Date", selected_metric: selected_metric_label})
+    actual_df["Date"] = pd.to_datetime(actual_df["Date"]).dt.strftime('%Y-%m-%d')
     forecast_df_renamed = forecast_df.rename(columns={"Forecast Date": "Date", f"Forecasted {selected_metric_label}": selected_metric_label})
     combined = pd.concat([actual_df, forecast_df_renamed], axis=0)
+    combined["Date"] = pd.to_datetime(combined["Date"]).dt.strftime('%Y-%m-%d')
 
     fig = px.line(combined, x="Date", y=selected_metric_label, title="Forecast vs Actual")
     fig.add_scatter(x=forecast_df["Forecast Date"], y=forecast_df["Upper CI"],
@@ -101,8 +105,8 @@ with tab1:
     fig.add_scatter(x=forecast_df["Forecast Date"], y=forecast_df["Lower CI"],
                     mode="lines", name="Lower CI", fill='tonexty',
                     fillcolor='rgba(0,100,80,0.2)', line=dict(width=0), showlegend=False)
+    fig.update_xaxes(type='category')
     st.plotly_chart(fig, use_container_width=True)
-
     st.dataframe(forecast_df, use_container_width=True)
     csv = forecast_df.to_csv(index=False).encode("utf-8")
     st.download_button("📥 Download Forecast CSV", csv, "forecast.csv", "text/csv")

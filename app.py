@@ -18,6 +18,10 @@ pages = {
         st.Page("SVR.py", title="Support Vector Regression"),
     ],
 
+    "Deep Learning Models": [
+        st.Page("LSTM.py", title="Long Short-Term Memory Networks")
+    ],
+
     "Model Comparison": [
         st.Page("ModelComparison.py", title="Model Performance Comparison"),
     ],
