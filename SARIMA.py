@@ -31,13 +31,20 @@ metrics = {
 selected_metric_label = st.selectbox("Choose a metric to forecast:", list(metrics.keys()), index=6)
 selected_metric = metrics[selected_metric_label]
 
-# Forecast horizon selector
-n_periods = st.slider("Select number of quarters to forecast:", min_value=4, max_value=16, value=8, step=4)
-
 # === Select and plot time series ===
 series = df[selected_metric].dropna()
+
+# === Train/Test Split Configuration ===
+test_pct = st.slider("Test Set Size (%)", min_value=10, max_value=40, value=20, step=5)
+test_size = int(len(series) * test_pct / 100)
+train_size = len(series) - test_size
+st.markdown(f"**Training Set:** {train_size} quarters | **Test Set:** {test_size} quarters")
+
 st.subheader("📊 Historical Time Series")
 st.line_chart(series)
+
+# Forecast horizon selector
+n_periods = st.slider("Select number of quarters to forecast:", min_value=4, max_value=16, value=8, step=4)
 
 # === Trend & Seasonality Diagnostics ===
 adf_stat, adf_pvalue, _, _, _, _ = adfuller(series)
@@ -156,8 +163,12 @@ with tab1:
         st.metric("Seasonality Strength", f"{seasonality_strength:.3f}")
 
     # Forecast table
-    st.dataframe(forecast_df, use_container_width=True)
-    csv = forecast_df.to_csv(index=False).encode("utf-8")
+    forecast_df_display = forecast_df.copy()
+    forecast_df_display.index = range(1, len(forecast_df_display) + 1)
+    forecast_df_display.index.name = 'Index'
+    forecast_df_display = forecast_df_display.drop(columns=["Forecast Date"])
+    st.dataframe(forecast_df_display, use_container_width=True)
+    csv = forecast_df_display.to_csv().encode("utf-8")
     st.download_button("📥 Download SARIMA Forecast CSV", csv, "sarima_forecast.csv", "text/csv")
 
 # === Tab 2: Seasonal Diagnostics ===
@@ -245,6 +256,20 @@ with tab2:
 with tab3:
     st.title("📊 SARIMA Residual Analysis")
     
+    # Introduction to residual diagnostics
+    st.markdown("""
+    **🔍 What are Residual Diagnostics?**
+    
+    **Residuals** are the differences between your actual data and what your SARIMA model predicted. 
+    They tell us how well your model fits the data and whether the model assumptions are met.
+    
+    **Why are they important?**
+    - **Model validation**: Check if your model captures all important patterns
+    - **Forecast reliability**: Poor residuals mean unreliable forecasts
+    - **Assumption checking**: SARIMA models assume residuals are random noise
+    - **Model improvement**: Identify what your model is missing
+    """)
+    
     # Residuals overview
     st.subheader("🟣 Residuals Overview")
     col1, col2, col3 = st.columns(3)
@@ -255,6 +280,15 @@ with tab3:
         st.metric("Residual Std", f"{np.std(residuals):.4f}")
     with col3:
         st.metric("Residual Range", f"{np.max(residuals) - np.min(residuals):.4f}")
+    
+    # Overview interpretation
+    st.markdown("""
+    **📊 What These Numbers Mean:**
+    
+    **Mean Residual**: Should be close to zero. If not, your model has a systematic bias.
+    **Standard Deviation**: Measures how spread out the errors are. Lower is better.
+    **Range**: The difference between largest and smallest errors. Shows error variability.
+    """)
 
     # Residuals over time
     st.subheader("📈 Residuals Over Time")
@@ -262,6 +296,29 @@ with tab3:
                         labels={'x': 'Date', 'y': 'Residuals'}, title="Residuals Over Time")
     resid_fig.add_hline(y=0, line_dash="dash", line_color="red")
     st.plotly_chart(resid_fig, use_container_width=True)
+    
+    # Residual interpretation with usage explanation
+    st.markdown("""
+    **🔍 What to Look For:**
+    
+    **✅ Good Signs:**
+    - **Mean close to zero**: Residuals should average around zero
+    - **Random scatter**: No obvious patterns or trends
+    - **Constant variance**: Spread should be roughly the same over time
+    - **No outliers**: No extreme values that stand out
+    
+    **⚠️ Warning Signs:**
+    - **Trends**: If residuals show a clear upward or downward trend
+    - **Heteroskedasticity**: If variance changes over time (funnel shape)
+    - **Outliers**: Extreme values that may indicate model misspecification
+    - **Patterns**: Any systematic patterns suggest the model is missing something
+    
+    **🎯 Usage:**
+    - **Detect model misspecification**: If residuals show patterns, your model is missing important features
+    - **Identify structural breaks**: Sudden changes in residual behavior
+    - **Check for outliers**: Unusual observations that may need special handling
+    - **Validate forecast assumptions**: Ensures your model errors are random
+    """)
 
     # Residual diagnostics
     st.subheader("🔬 Residual Diagnostics")
@@ -273,23 +330,53 @@ with tab3:
         fig_acf_resid = sm.graphics.tsa.plot_acf(residuals, lags=max_lags)
         st.pyplot(fig_acf_resid.figure)
         st.markdown(f"""
-        **Good signs:**
-        - No significant spikes (white noise)
-        - No seasonal patterns remaining
-        - Model captures all time dependencies
-        - **Lags shown**: {max_lags} (adjusted for sample size)
+        **🔍 ACF Interpretation:**
+        
+        **✅ Good Signs:**
+        - **No significant spikes**: All bars should be within the blue confidence bands
+        - **Random pattern**: No systematic pattern in the autocorrelations
+        - **White noise**: Residuals should behave like random noise
+        
+        **⚠️ Warning Signs:**
+        - **Spikes outside bands**: Any bar extending beyond the blue lines indicates autocorrelation
+        - **Seasonal patterns**: Spikes at lags 4, 8, 12... suggest seasonal patterns not captured
+        - **Trend patterns**: Gradual decay suggests trend not fully captured
+        
+        **🎯 Usage:**
+        - **Test independence**: Check if residuals are truly independent (no autocorrelation)
+        - **Identify missing patterns**: Spikes indicate patterns your model didn't capture
+        - **Validate SARIMA assumptions**: SARIMA assumes residuals are white noise
+        - **Guide model improvement**: Shows what additional terms might be needed
+        
+        **Lags shown**: {max_lags} (adjusted for sample size)
         """)
     
     with col2:
         st.markdown("**📉 Residual PACF**")
-        fig_pacf_resid = sm.graphics.tsa.plot_pacf(residuals, lags=max_lags)
+        # Use conservative lag limit for PACF
+        max_lags_pacf = min(20, len(series) // 4 - 1)
+        fig_pacf_resid = sm.graphics.tsa.plot_pacf(residuals, lags=max_lags_pacf)
         st.pyplot(fig_pacf_resid.figure)
         st.markdown(f"""
-        **Good signs:**
-        - No significant spikes
-        - No partial autocorrelation
-        - Model specification is adequate
-        - **Lags shown**: {max_lags} (adjusted for sample size)
+        **🔍 PACF Interpretation:**
+        
+        **✅ Good Signs:**
+        - **No significant spikes**: All bars within confidence bands
+        - **Random pattern**: No systematic partial autocorrelations
+        - **White noise**: Residuals should be independent
+        
+        **⚠️ Warning Signs:**
+        - **Spikes outside bands**: Indicates partial autocorrelation
+        - **AR patterns**: Suggests autoregressive components not captured
+        - **Seasonal patterns**: Spikes at seasonal lags
+        
+        **🎯 Usage:**
+        - **Test independence**: Check if residuals are truly independent after accounting for other lags
+        - **Identify AR components**: Spikes suggest missing autoregressive terms
+        - **Validate model specification**: Ensures no systematic patterns remain
+        - **Guide model refinement**: Shows what additional AR terms might be needed
+        
+        **Lags shown**: {max_lags_pacf} (adjusted for PACF limits)
         """)
 
     # Residual normality
@@ -314,6 +401,104 @@ with tab3:
         st.success("✅ Residuals are normally distributed")
     else:
         st.warning("⚠️ Residuals may not be normally distributed")
+    
+    # Distribution interpretation
+    st.markdown("""
+    **🔍 Distribution Analysis:**
+    
+    **✅ Good Signs:**
+    - **Bell-shaped curve**: Histogram should look roughly normal
+    - **Centered at zero**: Peak should be close to zero
+    - **Symmetric**: Left and right sides should be roughly equal
+    - **Normal p-value > 0.05**: Jarque-Bera test indicates normality
+    
+    **⚠️ Warning Signs:**
+    - **Skewed distribution**: Asymmetric histogram
+    - **Multiple peaks**: Bimodal or multimodal distribution
+    - **Heavy tails**: Too many extreme values
+    - **Non-normal p-value < 0.05**: Jarque-Bera test indicates non-normality
+    
+    **🎯 Usage:**
+    - **Validate normality assumption**: SARIMA confidence intervals assume normal residuals
+    - **Assess forecast reliability**: Non-normal residuals may affect prediction intervals
+    - **Detect outliers**: Extreme values that may need special handling
+    - **Check model adequacy**: Normal residuals suggest good model fit
+    """)
+    
+    # Comprehensive usage guide
+    st.subheader("📚 Comprehensive Usage Guide")
+    
+    st.markdown("""
+    **🎯 When to Use Each Diagnostic:**
+    
+    **1. Residuals Over Time:**
+    - **Use when**: You want to see if your model errors are random
+    - **Look for**: Patterns, trends, or changing variance
+    - **Action**: If patterns exist, consider adding more model terms
+    
+    **2. Autocorrelation Function (ACF):**
+    - **Use when**: You want to test if residuals are independent
+    - **Look for**: Spikes outside confidence bands
+    - **Action**: If spikes exist, add MA terms or seasonal components
+    
+    **3. Residual Distribution:**
+    - **Use when**: You want to validate normality assumption
+    - **Look for**: Bell-shaped, symmetric distribution
+    - **Action**: If non-normal, consider data transformations
+    
+    **4. Partial Autocorrelation (PACF):**
+    - **Use when**: You want to test independence after accounting for other lags
+    - **Look for**: Spikes outside confidence bands
+    - **Action**: If spikes exist, add AR terms
+    """)
+    
+    st.markdown("""
+    **🔬 Scientific Method for Model Validation:**
+    
+    **Step 1: Visual Inspection**
+    - Look at residuals over time for obvious patterns
+    - Check histogram for normality
+    - Examine ACF/PACF for independence
+    
+    **Step 2: Statistical Testing**
+    - Use Jarque-Bera test for normality
+    - Check ACF/PACF for independence
+    - Calculate summary statistics
+    
+    **Step 3: Interpretation**
+    - Minor violations may be acceptable
+    - Focus on practical impact on forecasts
+    - Consider model complexity vs. accuracy trade-off
+    
+    **Step 4: Action**
+    - If major issues: Modify model specification
+    - If minor issues: Monitor performance
+    - If no issues: Model is adequate
+    """)
+    
+    st.markdown("""
+    **💡 Practical Tips:**
+    
+    **For Policy Makers:**
+    - Focus on overall forecast accuracy rather than perfect diagnostics
+    - Use residual analysis to understand model limitations
+    - Consider multiple models for robust forecasting
+    
+    **For Researchers:**
+    - Document all diagnostic results
+    - Compare diagnostics across different models
+    - Use diagnostics to guide model selection
+    
+    **For Business Users:**
+    - Understand that no model is perfect
+    - Use diagnostics to assess forecast reliability
+    - Consider confidence intervals when making decisions
+    """)
+    
+    st.info("""
+    **📌 Note:** Residual diagnostics help assess model adequacy, but minor violations don't necessarily mean the model is useless. 
+    Focus on the overall pattern and consider the practical impact on your forecasts.
+    """)
 
 # === Tab 4: SARIMA Model Summary ===
 with tab4:

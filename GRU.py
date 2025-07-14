@@ -7,8 +7,9 @@ import plotly.graph_objects as go
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense, Dropout
+from tensorflow.keras.layers import GRU, Dense, Dropout
 from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.optimizers import Adam
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -43,8 +44,8 @@ test_size = int(len(series) * test_pct / 100)
 train_size = len(series) - test_size
 st.markdown(f"**Training Set:** {train_size} quarters | **Test Set:** {test_size} quarters")
 
-# === LSTM Configuration ===
-st.markdown("### ⚙️ LSTM Model Settings")
+# === GRU Configuration ===
+st.markdown("### ⚙️ GRU Model Settings")
 col1, col2 = st.columns(2)
 with col1:
     n_lags = st.slider("Number of Lag Quarters (input window):", min_value=4, max_value=16, value=8, step=1)
@@ -78,11 +79,11 @@ with col1:
         - Lower values make learning slower but more stable.
         """)
 with col2:
-    n_units = st.slider("LSTM Units:", min_value=8, max_value=128, value=32, step=8)
+    n_units = st.slider("GRU Units:", min_value=8, max_value=128, value=32, step=8)
     with st.popover("❓"):
         st.markdown("""
-        **LSTM Units**
-        The number of memory cells in the LSTM layer.
+        **GRU Units**
+        The number of memory cells in the GRU layer.
         - More units allow the model to learn more complex patterns.
         - Too many units may increase overfitting and training time.
         - Typical values: 16-64 for most time series problems.
@@ -108,7 +109,7 @@ with col2:
         Number of future quarters to forecast beyond the last available data.
         """)
 
-# === Prepare Data for LSTM ===
+# === Prepare Data for GRU ===
 def create_lagged_sequences(series, n_lags):
     X, y = [], []
     for i in range(n_lags, len(series)):
@@ -128,14 +129,13 @@ test_scaled = series_scaled[train_size-n_lags:]  # include lags from end of trai
 X_train, y_train = create_lagged_sequences(train_scaled, n_lags)
 X_test, y_test = create_lagged_sequences(test_scaled, n_lags)
 
-# Reshape for LSTM [samples, timesteps, features]
+# Reshape for GRU [samples, timesteps, features]
 X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], 1))
 X_test = X_test.reshape((X_test.shape[0], X_test.shape[1], 1))
 
-# === Build and Train LSTM Model ===
-from tensorflow.keras.optimizers import Adam
+# === Build and Train GRU Model ===
 model = Sequential()
-model.add(LSTM(n_units, input_shape=(n_lags, 1)))
+model.add(GRU(n_units, input_shape=(n_lags, 1)))
 model.add(Dropout(dropout))
 model.add(Dense(1))
 optimizer = Adam(learning_rate=learning_rate)
@@ -188,15 +188,15 @@ future_upper = future_forecast + 1.96 * forecast_std
 
 # === Tabs ===
 tab1, tab2, tab3, tab4 = st.tabs([
-    f"🔮 LSTM Forecast ({selected_metric_label})",
+    f"🔮 GRU Forecast ({selected_metric_label})",
     "📊 Model Diagnostics",
     "📋 Model Summary",
-    "🧠 LSTM Explanation"
+    "🧠 GRU Explanation"
 ])
 
 # === Tab 1: Forecast ===
 with tab1:
-    st.title(f"🔮 LSTM Forecast for {selected_metric_label}")
+    st.title(f"🔮 GRU Forecast for {selected_metric_label}")
     
     # Plot actual, test forecast, and future forecast
     fig = go.Figure()
@@ -249,13 +249,13 @@ with tab1:
         line=dict(width=0),
         showlegend=False
     ))
-    fig.update_layout(title="LSTM Forecast vs Actual", xaxis_title="Date", yaxis_title=selected_metric_label)
+    fig.update_layout(title="GRU Forecast vs Actual", xaxis_title="Date", yaxis_title=selected_metric_label)
     st.plotly_chart(fig, use_container_width=True)
     
     # Forecast table
     forecast_table = pd.DataFrame({
         "Date": future_dates,
-        "LSTM Forecast": future_forecast,
+        "GRU Forecast": future_forecast,
         "Lower CI": future_lower,
         "Upper CI": future_upper
     })
@@ -263,8 +263,8 @@ with tab1:
     forecast_table.index = range(1, len(forecast_table) + 1)
     forecast_table.index.name = 'Index'
     st.dataframe(forecast_table, use_container_width=True)
-    csv = forecast_table.to_csv(index=False).encode("utf-8")
-    st.download_button("📥 Download Forecast CSV", csv, "lstm_forecast.csv", "text/csv")
+    csv = forecast_table.to_csv().encode("utf-8")
+    st.download_button("📥 Download Forecast CSV", csv, "gru_forecast.csv", "text/csv")
     
     # Metrics table
     metrics_df = pd.DataFrame({
@@ -278,19 +278,19 @@ with tab1:
 
 # === Tab 2: Model Diagnostics ===
 with tab2:
-    st.title("📊 LSTM Model Diagnostics")
+    st.title("📊 GRU Model Diagnostics")
     
-    # Introduction to LSTM diagnostics
+    # Introduction to GRU diagnostics
     st.markdown("""
-    **🔍 What are LSTM Residual Diagnostics?**
+    **🔍 What are GRU Residual Diagnostics?**
     
-    **Residuals** are the differences between your actual data and what your LSTM model predicted. 
-    For LSTM models, these diagnostics help assess how well the neural network captures temporal patterns.
+    **Residuals** are the differences between your actual data and what your GRU model predicted. 
+    For GRU models, these diagnostics help assess how well the neural network captures temporal patterns with its gated architecture.
     
-    **Why are they important for LSTM?**
-    - **Memory validation**: Check if LSTM's memory cells are capturing long-term dependencies
-    - **Overfitting detection**: Neural networks can easily overfit to training data
-    - **Temporal pattern assessment**: Verify if LSTM is learning meaningful sequential relationships
+    **Why are they important for GRU?**
+    - **Gate mechanism validation**: Check if GRU's update and reset gates are working effectively
+    - **Memory efficiency**: GRU has fewer parameters than LSTM but should still capture dependencies
+    - **Temporal pattern assessment**: Verify if GRU is learning meaningful sequential relationships
     - **Forecast reliability**: Poor residuals indicate unreliable future predictions
     """)
     
@@ -299,12 +299,12 @@ with tab2:
     fig_loss = go.Figure()
     fig_loss.add_trace(go.Scatter(y=history.history['loss'], mode='lines', name='Train Loss'))
     fig_loss.add_trace(go.Scatter(y=history.history['val_loss'], mode='lines', name='Val Loss'))
-    fig_loss.update_layout(title="LSTM Loss Curve", xaxis_title="Epoch", yaxis_title="MSE Loss")
+    fig_loss.update_layout(title="GRU Loss Curve", xaxis_title="Epoch", yaxis_title="MSE Loss")
     st.plotly_chart(fig_loss, use_container_width=True)
     
     # Loss curve interpretation
     st.markdown("""
-    **🔍 LSTM Loss Curve Interpretation:**
+    **🔍 GRU Loss Curve Interpretation:**
     
     **✅ Good Signs:**
     - **Converging loss**: Both train and validation loss decrease and stabilize
@@ -318,194 +318,199 @@ with tab2:
     - **Unstable training**: Loss curves are very noisy or oscillating
     - **Poor convergence**: Loss doesn't stabilize after many epochs
     
-    **🎯 LSTM-Specific Usage:**
-    - **Memory cell validation**: Stable loss suggests LSTM cells are working properly
-    - **Gradient flow**: Smooth curves indicate good gradient flow through LSTM gates
-    - **Capacity assessment**: Helps determine if LSTM has enough units for the task
-    - **Regularization check**: Dropout effectiveness can be seen in validation loss
+    **🎯 GRU-Specific Usage:**
+    - **Gate mechanism validation**: Stable loss suggests GRU gates are working properly
+    - **Parameter efficiency**: GRU should achieve similar performance to LSTM with fewer parameters
+    - **Gradient flow**: Smooth curves indicate good gradient flow through GRU gates
+    - **Capacity assessment**: Helps determine if GRU has enough units for the task
     """)
     
     # Residuals
-    st.subheader("🟣 LSTM Residuals Over Time")
-    fig_resid = px.line(x=series.index[train_size:], y=residuals, labels={'x': 'Date', 'y': 'Residuals'}, title="LSTM Residuals Over Time")
+    st.subheader("🟣 GRU Residuals Over Time")
+    fig_resid = px.line(x=series.index[train_size:], y=residuals, labels={'x': 'Date', 'y': 'Residuals'}, title="GRU Residuals Over Time")
     fig_resid.add_hline(y=0, line_dash="dash", line_color="red")
     st.plotly_chart(fig_resid, use_container_width=True)
     
-    # LSTM residuals interpretation
+    # GRU residuals interpretation
     st.markdown("""
-    **🔍 LSTM Residuals Interpretation:**
+    **🔍 GRU Residuals Interpretation:**
     
     **✅ Good Signs:**
-    - **Random scatter**: No obvious temporal patterns (LSTM captured all dependencies)
+    - **Random scatter**: No obvious temporal patterns (GRU captured all dependencies)
     - **Mean close to zero**: No systematic bias in predictions
-    - **Constant variance**: Homoscedastic residuals (LSTM handles all time periods equally)
+    - **Constant variance**: Homoscedastic residuals (GRU handles all time periods equally)
     - **No outliers**: No extreme prediction errors
     
     **⚠️ Warning Signs:**
-    - **Temporal patterns**: If residuals show trends or seasonality, LSTM missed temporal dependencies
-    - **Heteroskedasticity**: If error variance changes over time, LSTM may need more units or different architecture
-    - **Systematic bias**: If residuals are consistently positive/negative, LSTM has prediction bias
-    - **Large outliers**: Extreme errors may indicate LSTM struggling with certain patterns
+    - **Temporal patterns**: If residuals show trends or seasonality, GRU missed temporal dependencies
+    - **Heteroskedasticity**: If error variance changes over time, GRU may need more units or different architecture
+    - **Systematic bias**: If residuals are consistently positive/negative, GRU has prediction bias
+    - **Large outliers**: Extreme errors may indicate GRU struggling with certain patterns
     
-    **🎯 LSTM-Specific Usage:**
-    - **Memory cell assessment**: Random residuals suggest LSTM memory cells are working well
-    - **Temporal dependency check**: Patterns in residuals indicate missed long-term dependencies
-    - **Architecture validation**: Helps determine if LSTM has enough capacity (units) for the task
-    - **Training quality**: Good residuals indicate effective training and gradient flow
+    **🎯 GRU-Specific Usage:**
+    - **Gate mechanism assessment**: Random residuals suggest GRU update and reset gates are working well
+    - **Memory efficiency check**: GRU should capture dependencies with fewer parameters than LSTM
+    - **Temporal dependency validation**: Patterns in residuals indicate missed long-term dependencies
+    - **Architecture validation**: Helps determine if GRU has enough capacity (units) for the task
     """)
     
     # Residual distribution
-    st.subheader("📊 LSTM Residual Distribution")
-    fig_hist = px.histogram(residuals, nbins=20, title="LSTM Residual Distribution")
+    st.subheader("📊 GRU Residual Distribution")
+    fig_hist = px.histogram(residuals, nbins=20, title="GRU Residual Distribution")
     fig_hist.add_vline(x=0, line_dash="dash", line_color="red")
     st.plotly_chart(fig_hist, use_container_width=True)
     
     # Residual stats
     st.markdown(f"**Mean:** {np.mean(residuals):.4f} | **Std:** {np.std(residuals):.4f} | **Skewness:** {pd.Series(residuals).skew():.3f} | **Kurtosis:** {pd.Series(residuals).kurtosis():.3f}")
     
-    # LSTM distribution interpretation
+    # GRU distribution interpretation
     st.markdown("""
-    **🔍 LSTM Residual Distribution Interpretation:**
+    **🔍 GRU Residual Distribution Interpretation:**
     
     **✅ Good Signs:**
-    - **Bell-shaped curve**: Roughly normal distribution (LSTM predictions are well-behaved)
-    - **Centered at zero**: No systematic bias in LSTM predictions
+    - **Bell-shaped curve**: Roughly normal distribution (GRU predictions are well-behaved)
+    - **Centered at zero**: No systematic bias in GRU predictions
     - **Reasonable spread**: Standard deviation indicates prediction uncertainty
     - **Low skewness**: Symmetric distribution around zero
     
     **⚠️ Warning Signs:**
-    - **Skewed distribution**: Asymmetric residuals may indicate LSTM bias
-    - **Heavy tails**: Too many extreme errors suggest LSTM struggles with outliers
-    - **Multiple peaks**: Bimodal distribution may indicate LSTM learning different patterns for different regimes
-    - **Very wide spread**: High standard deviation suggests LSTM uncertainty
+    - **Skewed distribution**: Asymmetric residuals may indicate GRU bias
+    - **Heavy tails**: Too many extreme errors suggest GRU struggles with outliers
+    - **Multiple peaks**: Bimodal distribution may indicate GRU learning different patterns for different regimes
+    - **Very wide spread**: High standard deviation suggests GRU uncertainty
     
-    **🎯 LSTM-Specific Usage:**
-    - **Prediction quality**: Normal distribution suggests LSTM is making reliable predictions
-    - **Bias detection**: Skewness indicates if LSTM systematically over/under-predicts
-    - **Outlier handling**: Heavy tails suggest LSTM may need more training data or regularization
+    **🎯 GRU-Specific Usage:**
+    - **Prediction quality**: Normal distribution suggests GRU is making reliable predictions
+    - **Bias detection**: Skewness indicates if GRU systematically over/under-predicts
+    - **Parameter efficiency**: GRU should achieve similar distribution quality to LSTM with fewer parameters
     - **Confidence assessment**: Distribution shape affects confidence interval reliability
     """)
     
     # Actual vs Predicted
-    st.subheader("📈 LSTM Actual vs Predicted (Test Set)")
-    fig_scatter = px.scatter(x=y_test_actual, y=y_pred, labels={'x': 'Actual', 'y': 'Predicted'}, title="LSTM: Actual vs Predicted")
+    st.subheader("📈 GRU Actual vs Predicted (Test Set)")
+    fig_scatter = px.scatter(x=y_test_actual, y=y_pred, labels={'x': 'Actual', 'y': 'Predicted'}, title="GRU: Actual vs Predicted")
     fig_scatter.add_trace(go.Scatter(x=[y_test_actual.min(), y_test_actual.max()], y=[y_test_actual.min(), y_test_actual.max()], mode='lines', name='Perfect Prediction', line=dict(dash='dash')))
     st.plotly_chart(fig_scatter, use_container_width=True)
     
     # Actual vs Predicted interpretation
     st.markdown("""
-    **🔍 LSTM Actual vs Predicted Interpretation:**
+    **🔍 GRU Actual vs Predicted Interpretation:**
     
     **✅ Good Signs:**
-    - **Points close to diagonal**: LSTM predictions closely match actual values
+    - **Points close to diagonal**: GRU predictions closely match actual values
     - **Random scatter**: No systematic patterns in prediction errors
     - **Good coverage**: Points spread across the range of actual values
     - **No clustering**: Predictions don't cluster in specific regions
     
     **⚠️ Warning Signs:**
     - **Systematic deviation**: Points consistently above/below diagonal indicate bias
-    - **Poor coverage**: LSTM struggles with certain ranges of values
-    - **Clustering**: Predictions cluster in specific regions (LSTM may be overfitting)
-    - **Outliers**: Points far from diagonal indicate LSTM struggles with certain patterns
+    - **Poor coverage**: GRU struggles with certain ranges of values
+    - **Clustering**: Predictions cluster in specific regions (GRU may be overfitting)
+    - **Outliers**: Points far from diagonal indicate GRU struggles with certain patterns
     
-    **🎯 LSTM-Specific Usage:**
-    - **Prediction accuracy**: Distance from diagonal shows LSTM prediction quality
-    - **Bias assessment**: Systematic deviation indicates LSTM learning bias
-    - **Range coverage**: Helps identify if LSTM handles all value ranges equally well
-    - **Overfitting check**: Clustering may indicate LSTM memorizing rather than generalizing
+    **🎯 GRU-Specific Usage:**
+    - **Prediction accuracy**: Distance from diagonal shows GRU prediction quality
+    - **Bias assessment**: Systematic deviation indicates GRU learning bias
+    - **Efficiency comparison**: Compare with LSTM to see if GRU achieves similar accuracy with fewer parameters
+    - **Overfitting check**: Clustering may indicate GRU memorizing rather than generalizing
     """)
     
-    # Comprehensive LSTM diagnostics guide
-    st.subheader("📚 LSTM-Specific Diagnostics Guide")
+    # Comprehensive GRU diagnostics guide
+    st.subheader("📚 GRU-Specific Diagnostics Guide")
     
     st.markdown("""
-    **🎯 When to Use Each LSTM Diagnostic:**
+    **🎯 When to Use Each GRU Diagnostic:**
     
     **1. Loss Curve:**
-    - **Use when**: You want to assess LSTM training quality and overfitting
+    - **Use when**: You want to assess GRU training quality and parameter efficiency
     - **Look for**: Converging loss, close train/validation curves
     - **Action**: If overfitting, increase dropout or reduce units; if underfitting, increase units or epochs
     
     **2. Residuals Over Time:**
-    - **Use when**: You want to check if LSTM captured all temporal dependencies
+    - **Use when**: You want to check if GRU captured all temporal dependencies with its gated architecture
     - **Look for**: Random scatter, no temporal patterns
-    - **Action**: If patterns exist, increase LSTM units or add more lags
+    - **Action**: If patterns exist, increase GRU units or add more lags
     
     **3. Residual Distribution:**
-    - **Use when**: You want to validate LSTM prediction quality and bias
+    - **Use when**: You want to validate GRU prediction quality and compare efficiency with LSTM
     - **Look for**: Normal distribution, centered at zero
     - **Action**: If skewed, check data scaling or model architecture
     
     **4. Actual vs Predicted:**
-    - **Use when**: You want to assess LSTM prediction accuracy across value ranges
+    - **Use when**: You want to assess GRU prediction accuracy and parameter efficiency
     - **Look for**: Points close to diagonal, good coverage
-    - **Action**: If poor coverage, consider different LSTM architecture or more training data
+    - **Action**: If poor coverage, consider different GRU architecture or more training data
     """)
     
     st.markdown("""
-    **🔬 LSTM-Specific Model Validation:**
+    **🔬 GRU-Specific Model Validation:**
     
     **Step 1: Training Assessment**
     - Monitor loss curves for convergence and overfitting
     - Check if early stopping was triggered appropriately
-    - Validate that dropout is working (validation loss should be close to training loss)
+    - Validate that GRU achieves similar performance to LSTM with fewer parameters
+    - Verify that dropout is working (validation loss should be close to training loss)
     
-    **Step 2: Temporal Pattern Validation**
-    - Ensure residuals show no temporal patterns (LSTM captured all dependencies)
-    - Check if LSTM handles different time periods equally well
-    - Verify that memory cells are working (no systematic bias)
+    **Step 2: Gate Mechanism Validation**
+    - Ensure residuals show no temporal patterns (GRU gates captured all dependencies)
+    - Check if GRU handles different time periods equally well
+    - Verify that update and reset gates are working effectively
+    - Compare performance with LSTM to assess parameter efficiency
     
     **Step 3: Prediction Quality Assessment**
     - Validate that predictions are normally distributed around actual values
     - Check for systematic bias in predictions
     - Assess prediction accuracy across different value ranges
+    - Compare prediction quality with LSTM for efficiency analysis
     
     **Step 4: Architecture Validation**
-    - Determine if LSTM has enough capacity (units) for the task
+    - Determine if GRU has enough capacity (units) for the task
     - Check if the number of lags is appropriate
     - Validate that regularization (dropout) is effective
+    - Assess parameter efficiency compared to LSTM
     """)
     
     st.markdown("""
-    **💡 LSTM-Specific Best Practices:**
+    **💡 GRU-Specific Best Practices:**
     
     **For Data Scientists:**
-    - Always scale data before LSTM training (MinMaxScaler or StandardScaler)
+    - Always scale data before GRU training (MinMaxScaler or StandardScaler)
     - Use early stopping to prevent overfitting
     - Monitor both training and validation loss curves
-    - Consider LSTM architecture complexity vs. data size
+    - Compare GRU performance with LSTM to assess parameter efficiency
     
     **For Researchers:**
-    - Document LSTM hyperparameters and training process
-    - Compare LSTM diagnostics with other models (ARIMA, GRU, etc.)
-    - Use diagnostics to guide LSTM architecture improvements
-    - Validate LSTM assumptions about temporal dependencies
+    - Document GRU hyperparameters and training process
+    - Compare GRU diagnostics with LSTM and other models
+    - Use diagnostics to guide GRU architecture improvements
+    - Validate GRU assumptions about temporal dependencies and parameter efficiency
     
     **For Business Users:**
-    - Understand that LSTM confidence intervals are approximate
-    - Monitor LSTM performance over time as new data becomes available
-    - Consider ensemble methods combining LSTM with other models
-    - Use LSTM diagnostics to assess forecast reliability
+    - Understand that GRU confidence intervals are approximate
+    - Monitor GRU performance over time as new data becomes available
+    - Consider GRU's parameter efficiency advantage over LSTM
+    - Use GRU diagnostics to assess forecast reliability and computational efficiency
     """)
     
     st.info("""
-    **📌 LSTM-Specific Notes:** 
-    - LSTM diagnostics focus on temporal pattern capture and neural network training quality
-    - Unlike statistical models, LSTM doesn't assume specific residual distributions
-    - Focus on temporal dependency capture and prediction accuracy rather than strict statistical assumptions
-    - LSTM confidence intervals are based on residual variance and may not capture all uncertainty sources
+    **📌 GRU-Specific Notes:** 
+    - GRU diagnostics focus on temporal pattern capture with parameter efficiency
+    - GRU has fewer parameters than LSTM but should achieve similar performance
+    - Focus on gate mechanism effectiveness and parameter efficiency
+    - GRU confidence intervals are based on residual variance and may not capture all uncertainty sources
+    - GRU is often preferred over LSTM when computational efficiency is important
     """)
 
 # === Tab 3: Model Summary ===
 with tab3:
-    st.title("📋 LSTM Model Summary & Explanation")
+    st.title("📋 GRU Model Summary & Explanation")
     st.subheader("Model Architecture")
     st.text(model.summary())
     
     st.subheader("Model Parameters")
     st.markdown(f"""
     - **Input Window (Lags):** {n_lags}
-    - **LSTM Units:** {n_units}
+    - **GRU Units:** {n_units}
     - **Dropout:** {dropout}
     - **Epochs:** {len(history.history['loss'])}
     - **Batch Size:** {batch_size}
@@ -547,18 +552,18 @@ series = df[selected_metric].dropna()
         return np.array(X), np.array(y)
     ```
     - Scales the data to [0, 1] for stable neural network training.
-    - Creates input/output pairs for the LSTM using a sliding window of `n_lags`.
+    - Creates input/output pairs for the GRU using a sliding window of `n_lags`.
 
     **Step 3: Model Building**
     ```python
     model = Sequential()
-    model.add(LSTM(n_units, input_shape=(n_lags, 1)))
+    model.add(GRU(n_units, input_shape=(n_lags, 1)))
     model.add(Dropout(dropout))
     model.add(Dense(1))
     optimizer = Adam(learning_rate=learning_rate)
     model.compile(optimizer=optimizer, loss='mse')
     ```
-    - Builds a simple LSTM network with one LSTM layer, dropout for regularization, and a dense output layer.
+    - Builds a simple GRU network with one GRU layer, dropout for regularization, and a dense output layer.
     - Uses Adam optimizer and mean squared error loss.
 
     **Step 4: Model Training**
@@ -605,7 +610,7 @@ def forecast_future(model, scaler, series, n_lags, n_periods):
 
     **Model Parameter Explanations:**
     - **Input Window (Lags):** Number of past quarters used for each prediction. More lags = more context, but too many can overfit.
-    - **LSTM Units:** Number of memory cells in the LSTM layer. More units = more capacity, but also more risk of overfitting.
+    - **GRU Units:** Number of memory cells in the GRU layer. More units = more capacity, but also more risk of overfitting.
     - **Dropout:** Fraction of units dropped during training to prevent overfitting.
     - **Epochs:** Number of times the model sees the training data.
     - **Batch Size:** Number of samples per gradient update.
@@ -617,27 +622,27 @@ def forecast_future(model, scaler, series, n_lags, n_periods):
     - Always scale your data before training LSTM/GRU models.
     - Use early stopping and dropout to prevent overfitting.
     - Tune lags, units, and learning rate for best results.
-    - LSTM is powerful for capturing long-term dependencies and non-linear patterns in time series.
+    - GRU is powerful for capturing long-term dependencies and non-linear patterns in time series.
     - Recursive forecasting can accumulate error; monitor confidence intervals.
 
     **Limitations:**
-    - LSTM models require more data and computation than classical models.
+    - GRU models require more data and computation than classical models.
     - Can overfit if too complex or if data is too short.
     - Confidence intervals are approximate (based on residual std).
     - Not as interpretable as ARIMA/SARIMA.
     """)
 
-# === Tab 4: LSTM Explanation ===
+# === Tab 4: GRU Explanation ===
 with tab4:
-    st.title("🧠 LSTM Model Summary & Explanation")
-    st.subheader("🔍 What is LSTM?")
+    st.title("🧠 GRU Model Summary & Explanation")
+    st.subheader("🔍 What is GRU?")
     st.markdown("""
-    **LSTM (Long Short-Term Memory)** networks are a type of recurrent neural network (RNN) designed to capture long-term dependencies in sequential data, overcoming the vanishing gradient problem of simple RNNs. They are especially powerful for time series forecasting with complex, non-linear, and long-memory patterns.
+    **GRU (Gated Recurrent Unit)** networks are a type of recurrent neural network (RNN) designed to capture long-term dependencies in sequential data, similar to LSTM but with a simpler structure and fewer parameters. GRUs are efficient and effective for time series forecasting with moderate to long memory requirements.
     """)
-    st.subheader("📐 LSTM Model Components")
+    st.subheader("📐 GRU Model Components")
     st.markdown("""
-    - **Input Window (Lags):** Number of past quarters used for each prediction. More lags = more context, but too many can overfit.
-    - **LSTM Units:** Number of memory cells in the LSTM layer. More units = more capacity, but also more risk of overfitting.
+    - **Input Window (Lags):** Number of past quarters used for each prediction.
+    - **GRU Units:** Number of memory cells in the GRU layer.
     - **Dropout:** Fraction of units dropped during training to prevent overfitting.
     - **Epochs:** Number of times the model sees the training data.
     - **Batch Size:** Number of samples per gradient update.
@@ -645,13 +650,13 @@ with tab4:
     - **Validation Split:** Fraction of training data used for validation.
     - **Early Stopping:** Stops training if validation loss doesn't improve.
     """)
-    st.subheader("🔄 How LSTM Works")
+    st.subheader("🔄 How GRU Works")
     st.markdown("""
     1. **Data Preparation:**
-       - Data is scaled (e.g., MinMaxScaler) for stable neural network training.
-       - Lagged input windows are created (e.g., 8 previous quarters to predict the next).
+       - Data is scaled for stable neural network training.
+       - Lagged input windows are created.
     2. **Model Architecture:**
-       - LSTM layer(s) process the input sequence, learning temporal dependencies.
+       - GRU layer(s) process the input sequence, learning temporal dependencies.
        - Dropout layer(s) help prevent overfitting.
        - Dense layer outputs the forecast.
     3. **Training:**
@@ -673,7 +678,7 @@ with tab4:
     - **Input Window (Lags):**
       - More lags allow the model to see further back in time, capturing longer-term patterns.
       - Too many lags can introduce noise and overfitting.
-    - **LSTM Units:**
+    - **GRU Units:**
       - More units increase the model’s ability to learn complex relationships.
       - Too many can overfit, especially with limited data.
     - **Dropout:**
@@ -681,39 +686,41 @@ with tab4:
     - **Epochs/Batch Size/Learning Rate:**
       - Affect training speed, convergence, and generalization.
     """)
-    st.subheader("🔬 Why LSTM for This Data?")
+    st.subheader("🔬 Why GRU for This Data?")
     st.markdown("""
+    - **Parameter Efficiency:**
+      - Achieves similar performance to LSTM with fewer parameters.
     - **Handles Non-Linearity:**
       - Captures complex, non-linear relationships in economic data.
     - **Long-Term Memory:**
       - Remembers patterns over many quarters, ideal for economic cycles.
-    - **Robust to Noise:**
-      - Can generalize well with proper regularization and validation.
+    - **Faster Training:**
+      - Trains faster than LSTM, suitable for moderate data sizes.
     """)
     st.subheader("💡 Practical Tips")
     st.markdown("""
     **For Policy Makers:**
-    - Use LSTM forecasts for planning when data shows complex, non-linear, or long-term patterns.
+    - Use GRU forecasts for planning when data shows moderate to long-term patterns.
     - Monitor confidence intervals for risk assessment.
 
     **For Researchers:**
     - Tune hyperparameters (lags, units, dropout) for best results.
-    - Compare LSTM with simpler models to justify complexity.
+    - Compare GRU with LSTM and simpler models to justify choice.
 
     **For Business Users:**
-    - LSTM is powerful but less interpretable than ARIMA/SARIMA.
-    - Use diagnostics and explainability tools (e.g., SHAP) to understand model decisions.
+    - GRU is powerful and efficient, but less interpretable than ARIMA/SARIMA.
+    - Use diagnostics and explainability tools to understand model decisions.
     """)
     st.subheader("✅ Best Practices")
     st.markdown("""
-    - Always scale your data before training LSTM/GRU models.
+    - Always scale your data before training GRU models.
     - Use early stopping and dropout to prevent overfitting.
     - Tune lags, units, and learning rate for best results.
     - Validate with out-of-sample data.
     """)
     st.subheader("⚠️ Limitations")
     st.markdown("""
-    - Requires more data and computation than classical models.
+    - May struggle with very long sequences compared to LSTM.
     - Can overfit if too complex or if data is too short.
     - Confidence intervals are approximate (based on residual std).
     - Not as interpretable as ARIMA/SARIMA.

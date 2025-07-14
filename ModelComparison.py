@@ -15,13 +15,187 @@ from statsmodels.tsa.holtwinters import ExponentialSmoothing
 import pmdarima as pm
 
 # Machine Learning Models
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.svm import SVR
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-import xgboost as xgb
+
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.metrics import mean_squared_error
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, GRU, SimpleRNN, Conv1D, Dense, Dropout, Flatten
+from tensorflow.keras.optimizers import Adam
 
 warnings.filterwarnings("ignore")
+
+def create_lagged_data(series, n_lags):
+    X, y = [], []
+    for i in range(n_lags, len(series)):
+        X.append(series[i-n_lags:i])
+        y.append(series[i])
+    return np.array(X), np.array(y)
+
+def train_lstm(series, test_size, n_lags=8, n_units=32, epochs=50, batch_size=8, learning_rate=0.001):
+    scaler = MinMaxScaler()
+    scaled = scaler.fit_transform(series.values.reshape(-1, 1)).flatten()
+    X, y = create_lagged_data(scaled, n_lags)
+    X = X[..., np.newaxis]
+    X_train, y_train = X[:-test_size], y[:-test_size]
+    X_test, y_test = X[-test_size:], y[-test_size:]
+    model = Sequential([
+        LSTM(n_units, input_shape=(n_lags, 1)),
+        Dropout(0.2),
+        Dense(1)
+    ])
+    model.compile(optimizer=Adam(learning_rate=learning_rate), loss='mse')
+    model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, verbose=0)
+    pred = model.predict(X_test).flatten()
+    pred_inv = scaler.inverse_transform(pred.reshape(-1, 1)).flatten()
+    return pred_inv, None
+
+def train_gru(series, test_size, n_lags=8, n_units=32, epochs=50, batch_size=8, learning_rate=0.001):
+    scaler = MinMaxScaler()
+    scaled = scaler.fit_transform(series.values.reshape(-1, 1)).flatten()
+    X, y = create_lagged_data(scaled, n_lags)
+    X = X[..., np.newaxis]
+    X_train, y_train = X[:-test_size], y[:-test_size]
+    X_test, y_test = X[-test_size:], y[-test_size:]
+    model = Sequential([
+        GRU(n_units, input_shape=(n_lags, 1)),
+        Dropout(0.1),
+        Dense(1)
+    ])
+    model.compile(optimizer=Adam(learning_rate=learning_rate), loss='mse')
+    model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, verbose=0)
+    pred = model.predict(X_test).flatten()
+    pred_inv = scaler.inverse_transform(pred.reshape(-1, 1)).flatten()
+    return pred_inv, None
+
+def train_cnn(series, test_size, n_lags=8, n_filters=32, kernel_size=4, epochs=50, batch_size=8, learning_rate=0.001):
+    scaler = MinMaxScaler()
+    scaled = scaler.fit_transform(series.values.reshape(-1, 1)).flatten()
+    X, y = create_lagged_data(scaled, n_lags)
+    X = X[..., np.newaxis]
+    X_train, y_train = X[:-test_size], y[:-test_size]
+    X_test, y_test = X[-test_size:], y[-test_size:]
+    model = Sequential([
+        Conv1D(filters=n_filters, kernel_size=kernel_size, activation='relu', input_shape=(n_lags, 1)),
+        Dropout(0.2),
+        Flatten(),
+        Dense(32, activation='relu'),
+        Dense(1)
+    ])
+    model.compile(optimizer=Adam(learning_rate=learning_rate), loss='mse')
+    model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, verbose=0)
+    pred = model.predict(X_test).flatten()
+    pred_inv = scaler.inverse_transform(pred.reshape(-1, 1)).flatten()
+    return pred_inv, None
+
+def train_rnn(series, test_size, n_lags=8, n_units=16, epochs=50, batch_size=8, learning_rate=0.001):
+    scaler = MinMaxScaler()
+    scaled = scaler.fit_transform(series.values.reshape(-1, 1)).flatten()
+    X, y = create_lagged_data(scaled, n_lags)
+    X = X[..., np.newaxis]
+    X_train, y_train = X[:-test_size], y[:-test_size]
+    X_test, y_test = X[-test_size:], y[-test_size:]
+    model = Sequential([
+        SimpleRNN(n_units, input_shape=(n_lags, 1), activation='tanh'),
+        Dropout(0.2),
+        Dense(32, activation='relu'),
+        Dense(1)
+    ])
+    model.compile(optimizer=Adam(learning_rate=learning_rate), loss='mse')
+    model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, verbose=0)
+    pred = model.predict(X_test).flatten()
+    pred_inv = scaler.inverse_transform(pred.reshape(-1, 1)).flatten()
+    return pred_inv, None
+
+def train_arima(series, test_size, force_seasonal=None):
+    train_series = series.iloc[:-test_size]
+    test_series = series.iloc[-test_size:]
+    # Detect seasonality if not specified
+    if force_seasonal is None:
+        from statsmodels.tsa.seasonal import seasonal_decompose
+        decomposition = seasonal_decompose(series, model='additive', period=4)
+        seasonal_component = decomposition.seasonal
+        seasonality_strength = abs(seasonal_component).max()
+        force_seasonal = seasonality_strength > 0.5
+    model = pm.auto_arima(
+        train_series,
+        seasonal=force_seasonal,
+        m=4 if force_seasonal else 1,
+        max_d=1,
+        D=1 if force_seasonal else 0,
+        stepwise=True,
+        suppress_warnings=True,
+        error_action='ignore'
+    )
+    forecast = model.predict(n_periods=test_size)
+    aic = model.aic()
+    return forecast, aic
+
+def train_sarima(series, test_size, seasonal_period=4):
+    train_series = series.iloc[:-test_size]
+    test_series = series.iloc[-test_size:]
+    model = pm.auto_arima(
+        train_series,
+        seasonal=True,
+        m=seasonal_period,
+        max_d=2,
+        max_D=2,
+        max_p=3,
+        max_q=3,
+        max_P=2,
+        max_Q=2,
+        D=1,
+        stepwise=True,
+        suppress_warnings=True,
+        error_action='ignore'
+    )
+    forecast = model.predict(n_periods=test_size)
+    aic = model.aic()
+    return forecast, aic
+
+def train_exponential_smoothing(train_data, test_periods):
+    """Train Exponential Smoothing model and make predictions"""
+    try:
+        # Try different models and select best one
+        models = {}
+        
+        # Simple Exponential Smoothing
+        try:
+            model_simple = ExponentialSmoothing(train_data, trend=None, seasonal=None)
+            fitted_simple = model_simple.fit()
+            models['Simple'] = fitted_simple
+        except:
+            pass
+        
+        # Holt's method
+        try:
+            model_holt = ExponentialSmoothing(train_data, trend='add', seasonal=None)
+            fitted_holt = model_holt.fit()
+            models['Holt'] = fitted_holt
+        except:
+            pass
+        
+        # Holt-Winters
+        try:
+            model_hw = ExponentialSmoothing(train_data, trend='add', seasonal='add', seasonal_periods=4)
+            fitted_hw = model_hw.fit()
+            models['Holt-Winters'] = fitted_hw
+        except:
+            pass
+        
+        # Select best model
+        if models:
+            best_model_name = min(models.keys(), key=lambda x: models[x].aic)
+            best_model = models[best_model_name]
+            forecast = best_model.forecast(test_periods)
+            return forecast, best_model.aic
+        else:
+            return None, None
+    except:
+        return None, None
 
 # === Load and preprocess dataset ===
 df = pd.read_csv("MalaysiaQuarterlyLabourForce.csv")
@@ -85,10 +259,11 @@ with col1:
     use_exp_smooth = st.checkbox("Exponential Smoothing", value=True)
 
 with col2:
-    st.markdown("**🤖 Machine Learning Models:**")
-    use_rf = st.checkbox("Random Forest", value=True)
-    use_xgb = st.checkbox("XGBoost", value=True)
-    use_svr = st.checkbox("Support Vector Regression", value=True)
+    st.markdown("**🧠 Deep Learning Models:**")
+    use_lstm = st.checkbox("LSTM", value=True)
+    use_gru = st.checkbox("GRU", value=True)
+    use_cnn = st.checkbox("CNN", value=True)
+    use_rnn = st.checkbox("RNN", value=True)
 
 # === Feature Engineering Function ===
 def create_features(series, n_lags=8, include_seasonal=True):
@@ -125,45 +300,51 @@ def create_features(series, n_lags=8, include_seasonal=True):
     return df_features
 
 # === Model Training and Prediction Functions ===
-def train_arima(train_data, test_periods):
-    """Train ARIMA model and make predictions"""
-    try:
-        # Auto ARIMA
-        model = pm.auto_arima(
-            train_data,
-            seasonal=False,
-            max_d=1,
-            stepwise=True,
-            suppress_warnings=True,
-            error_action='ignore'
-        )
-        
-        # Forecast
-        forecast = model.predict(n_periods=test_periods)
-        return forecast, model.aic()
-    except:
-        return None, None
+def train_arima(series, test_size, force_seasonal=None):
+    train_series = series.iloc[:-test_size]
+    test_series = series.iloc[-test_size:]
+    # Detect seasonality if not specified
+    if force_seasonal is None:
+        from statsmodels.tsa.seasonal import seasonal_decompose
+        decomposition = seasonal_decompose(series, model='additive', period=4)
+        seasonal_component = decomposition.seasonal
+        seasonality_strength = abs(seasonal_component).max()
+        force_seasonal = seasonality_strength > 0.5
+    model = pm.auto_arima(
+        train_series,
+        seasonal=force_seasonal,
+        m=4 if force_seasonal else 1,
+        max_d=1,
+        D=1 if force_seasonal else 0,
+        stepwise=True,
+        suppress_warnings=True,
+        error_action='ignore'
+    )
+    forecast = model.predict(n_periods=test_size)
+    aic = model.aic()
+    return forecast, aic
 
-def train_sarima(train_data, test_periods):
-    """Train SARIMA model and make predictions"""
-    try:
-        # Auto SARIMA
-        model = pm.auto_arima(
-            train_data,
-            seasonal=True,
-            m=4,
-            max_d=2,
-            max_D=2,
-            stepwise=True,
-            suppress_warnings=True,
-            error_action='ignore'
-        )
-        
-        # Forecast
-        forecast = model.predict(n_periods=test_periods)
-        return forecast, model.aic()
-    except:
-        return None, None
+def train_sarima(series, test_size, seasonal_period=4):
+    train_series = series.iloc[:-test_size]
+    test_series = series.iloc[-test_size:]
+    model = pm.auto_arima(
+        train_series,
+        seasonal=True,
+        m=seasonal_period,
+        max_d=2,
+        max_D=2,
+        max_p=3,
+        max_q=3,
+        max_P=2,
+        max_Q=2,
+        D=1,
+        stepwise=True,
+        suppress_warnings=True,
+        error_action='ignore'
+    )
+    forecast = model.predict(n_periods=test_size)
+    aic = model.aic()
+    return forecast, aic
 
 def train_exponential_smoothing(train_data, test_periods):
     """Train Exponential Smoothing model and make predictions"""
@@ -206,146 +387,6 @@ def train_exponential_smoothing(train_data, test_periods):
     except:
         return None, None
 
-def train_random_forest(train_data, test_periods):
-    """Train Random Forest model and make predictions"""
-    try:
-        # Create features
-        features_df = create_features(train_data, n_lags=8, include_seasonal=True)
-        X = features_df.drop(columns=[features_df.columns[0]])
-        y = features_df.iloc[:, 0]
-        
-        # Train model
-        rf_model = RandomForestRegressor(n_estimators=200, max_depth=10, random_state=42)
-        rf_model.fit(X, y)
-        
-        # Generate forecast
-        last_features = X.iloc[-1].to_dict()
-        forecast = generate_ml_forecast(rf_model, last_features, test_periods, n_lags=8)
-        
-        return forecast, None
-    except:
-        return None, None
-
-def train_xgboost(train_data, test_periods):
-    """Train XGBoost model and make predictions"""
-    try:
-        # Create features
-        features_df = create_features(train_data, n_lags=8, include_seasonal=True)
-        X = features_df.drop(columns=[features_df.columns[0]])
-        y = features_df.iloc[:, 0]
-        
-        # Scale features
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X)
-        
-        # Train model
-        xgb_model = xgb.XGBRegressor(
-            n_estimators=200,
-            max_depth=6,
-            learning_rate=0.1,
-            random_state=42
-        )
-        xgb_model.fit(X_scaled, y)
-        
-        # Generate forecast
-        last_features = X.iloc[-1].to_dict()
-        forecast = generate_ml_forecast_scaled(xgb_model, scaler, last_features, test_periods, n_lags=8)
-        
-        return forecast, None
-    except:
-        return None, None
-
-def train_svr(train_data, test_periods):
-    """Train SVR model and make predictions"""
-    try:
-        # Create features
-        features_df = create_features(train_data, n_lags=8, include_seasonal=True)
-        X = features_df.drop(columns=[features_df.columns[0]])
-        y = features_df.iloc[:, 0]
-        
-        # Scale features
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X)
-        
-        # Train model
-        svr_model = SVR(kernel='rbf', C=1.0, epsilon=0.1)
-        svr_model.fit(X_scaled, y)
-        
-        # Generate forecast
-        last_features = X.iloc[-1].to_dict()
-        forecast = generate_ml_forecast_scaled(svr_model, scaler, last_features, test_periods, n_lags=8)
-        
-        return forecast, None
-    except:
-        return None, None
-
-def generate_ml_forecast(model, last_features, n_periods, n_lags=8):
-    """Generate multi-step forecast for ML models"""
-    forecast = []
-    current_features = last_features.copy()
-    
-    for i in range(n_periods):
-        # Convert to feature array
-        feature_values = list(current_features.values())
-        pred = model.predict([feature_values])[0]
-        forecast.append(pred)
-        
-        # Update features for next prediction
-        for lag in range(n_lags, 1, -1):
-            current_features[f'lag_{lag}'] = current_features[f'lag_{lag-1}']
-        current_features['lag_1'] = pred
-        
-        # Update other features
-        if 'rolling_mean_4' in current_features:
-            current_features['rolling_mean_4'] = pred
-        if 'rolling_mean_8' in current_features:
-            current_features['rolling_mean_8'] = pred
-        
-        current_features['trend'] += 1
-        current_features['trend_squared'] = current_features['trend'] ** 2
-        
-        if 'quarter' in current_features:
-            quarter = (current_features['quarter'] % 4) + 1
-            current_features['quarter'] = quarter
-            current_features['quarter_sin'] = np.sin(2 * np.pi * quarter / 4)
-            current_features['quarter_cos'] = np.cos(2 * np.pi * quarter / 4)
-    
-    return forecast
-
-def generate_ml_forecast_scaled(model, scaler, last_features, n_periods, n_lags=8):
-    """Generate multi-step forecast for scaled ML models"""
-    forecast = []
-    current_features = last_features.copy()
-    
-    for i in range(n_periods):
-        # Convert to feature array and scale
-        feature_values = list(current_features.values())
-        feature_values_scaled = scaler.transform([feature_values])
-        pred = model.predict(feature_values_scaled)[0]
-        forecast.append(pred)
-        
-        # Update features for next prediction
-        for lag in range(n_lags, 1, -1):
-            current_features[f'lag_{lag}'] = current_features[f'lag_{lag-1}']
-        current_features['lag_1'] = pred
-        
-        # Update other features
-        if 'rolling_mean_4' in current_features:
-            current_features['rolling_mean_4'] = pred
-        if 'rolling_mean_8' in current_features:
-            current_features['rolling_mean_8'] = pred
-        
-        current_features['trend'] += 1
-        current_features['trend_squared'] = current_features['trend'] ** 2
-        
-        if 'quarter' in current_features:
-            quarter = (current_features['quarter'] % 4) + 1
-            current_features['quarter'] = quarter
-            current_features['quarter_sin'] = np.sin(2 * np.pi * quarter / 4)
-            current_features['quarter_cos'] = np.cos(2 * np.pi * quarter / 4)
-    
-    return forecast
-
 # === Train All Models ===
 st.markdown("### 🚀 Training Models...")
 
@@ -366,7 +407,7 @@ if use_arima:
             'mape': np.mean(np.abs((test_series - forecast) / test_series)) * 100,
             'r2': r2_score(test_series, forecast)
         }
-    progress_bar.progress(16)
+    progress_bar.progress(14)
 
 # Train SARIMA
 if use_sarima:
@@ -381,7 +422,7 @@ if use_sarima:
             'mape': np.mean(np.abs((test_series - forecast) / test_series)) * 100,
             'r2': r2_score(test_series, forecast)
         }
-    progress_bar.progress(33)
+    progress_bar.progress(28)
 
 # Train Exponential Smoothing
 if use_exp_smooth:
@@ -396,14 +437,14 @@ if use_exp_smooth:
             'mape': np.mean(np.abs((test_series - forecast) / test_series)) * 100,
             'r2': r2_score(test_series, forecast)
         }
-    progress_bar.progress(50)
+    progress_bar.progress(42)
 
-# Train Random Forest
-if use_rf:
-    status_text.text("Training Random Forest...")
-    forecast, aic = train_random_forest(train_series, test_size)
+# Train LSTM
+if use_lstm:
+    status_text.text("Training LSTM...")
+    forecast, aic = train_lstm(train_series, test_size)
     if forecast is not None:
-        models_results['Random Forest'] = {
+        models_results['LSTM'] = {
             'forecast': forecast,
             'aic': aic,
             'rmse': np.sqrt(mean_squared_error(test_series, forecast)),
@@ -411,14 +452,14 @@ if use_rf:
             'mape': np.mean(np.abs((test_series - forecast) / test_series)) * 100,
             'r2': r2_score(test_series, forecast)
         }
-    progress_bar.progress(67)
+    progress_bar.progress(57)
 
-# Train XGBoost
-if use_xgb:
-    status_text.text("Training XGBoost...")
-    forecast, aic = train_xgboost(train_series, test_size)
+# Train GRU
+if use_gru:
+    status_text.text("Training GRU...")
+    forecast, aic = train_gru(train_series, test_size)
     if forecast is not None:
-        models_results['XGBoost'] = {
+        models_results['GRU'] = {
             'forecast': forecast,
             'aic': aic,
             'rmse': np.sqrt(mean_squared_error(test_series, forecast)),
@@ -426,14 +467,29 @@ if use_xgb:
             'mape': np.mean(np.abs((test_series - forecast) / test_series)) * 100,
             'r2': r2_score(test_series, forecast)
         }
-    progress_bar.progress(83)
+    progress_bar.progress(71)
 
-# Train SVR
-if use_svr:
-    status_text.text("Training SVR...")
-    forecast, aic = train_svr(train_series, test_size)
+# Train CNN
+if use_cnn:
+    status_text.text("Training CNN...")
+    forecast, aic = train_cnn(train_series, test_size)
     if forecast is not None:
-        models_results['SVR'] = {
+        models_results['CNN'] = {
+            'forecast': forecast,
+            'aic': aic,
+            'rmse': np.sqrt(mean_squared_error(test_series, forecast)),
+            'mae': mean_absolute_error(test_series, forecast),
+            'mape': np.mean(np.abs((test_series - forecast) / test_series)) * 100,
+            'r2': r2_score(test_series, forecast)
+        }
+    progress_bar.progress(85)
+
+# Train RNN
+if use_rnn:
+    status_text.text("Training RNN...")
+    forecast, aic = train_rnn(train_series, test_size)
+    if forecast is not None:
+        models_results['RNN'] = {
             'forecast': forecast,
             'aic': aic,
             'rmse': np.sqrt(mean_squared_error(test_series, forecast)),
@@ -452,11 +508,12 @@ if not models_results:
     st.stop()
 
 # === Tabs ===
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📊 Performance Comparison",
     "📈 Forecast Visualization",
     "🔍 Detailed Analysis",
-    "🏆 Model Rankings"
+    "🏆 Model Rankings",
+    "📝 Methodology & Code"
 ])
 
 # === Tab 1: Performance Comparison ===
@@ -773,3 +830,180 @@ with tab4:
         "model_comparison_results.csv",
         "text/csv"
     ) 
+
+# === Which Model is Better? ===
+st.markdown("---")
+st.header("🏆 Which Model is Better?")
+
+st.markdown("""
+### **Model Selection Guidance**
+
+Choosing the "best" model depends on your goals, data characteristics, and how you value accuracy vs interpretability. Here’s a summary to help you decide:
+
+#### **1. Statistical Models**
+- **ARIMA**
+  - **Best for:** Data with trend, little or no seasonality, high interpretability
+  - **Strengths:** Simple, transparent, easy to explain
+  - **Limitations:** May miss complex or nonlinear patterns
+- **SARIMA**
+  - **Best for:** Data with strong, regular seasonality (e.g., quarterly cycles)
+  - **Strengths:** Captures both trend and seasonal patterns, interpretable
+  - **Limitations:** Still linear, may miss nonlinearities
+- **Exponential Smoothing**
+  - **Best for:** Short-term forecasts, stable or moderately seasonal data
+  - **Strengths:** Fast, robust, interpretable, good baseline
+  - **Limitations:** Limited for complex or highly nonlinear data
+
+#### **2. Deep Learning Models**
+- **LSTM**
+  - **Best for:** Data with long-term dependencies, nonlinear patterns, or when accuracy is critical
+  - **Strengths:** Captures complex, nonlinear, and long-memory effects
+  - **Limitations:** Less interpretable, needs more data and tuning
+- **GRU**
+  - **Best for:** Similar to LSTM, but when you want faster training and fewer parameters
+  - **Strengths:** Efficient, good for moderate to long-term patterns
+  - **Limitations:** Slightly less expressive than LSTM, still less interpretable
+- **CNN**
+  - **Best for:** Data with strong local/seasonal patterns, short-term dependencies
+  - **Strengths:** Excels at local pattern recognition, fast
+  - **Limitations:** May miss long-term dependencies
+- **RNN**
+  - **Best for:** Simple sequential patterns, as a baseline for comparison
+  - **Strengths:** Simple, fast, interpretable for basic patterns
+  - **Limitations:** Struggles with long-term dependencies (vanishing gradient)
+
+---
+
+### **Performance-Based Recommendation**
+
+Below are the models ranked by their test set RMSE and MAPE (lower is better):
+
+""")
+
+# Assume you have a DataFrame 'results_df' with columns: 'Model', 'RMSE', 'MAPE', etc.
+try:
+    best_rmse_model = performance_df.loc[performance_df['RMSE'].idxmin(), 'Model']
+    best_mape_model = performance_df.loc[performance_df['MAPE (%)'].idxmin(), 'Model']
+    st.success(f"**Best RMSE:** {best_rmse_model} | **Best MAPE:** {best_mape_model}")
+except Exception:
+    st.info("Performance metrics table not available.")
+
+st.markdown("""
+#### **Practical Recommendations**
+- **If you want the most interpretable model:** Use **ARIMA** or **Exponential Smoothing**.
+- **If your data has strong seasonality:** Use **SARIMA** or **Holt-Winters Exponential Smoothing**.
+- **If you want the best accuracy and can handle complexity:** Try **LSTM** or **GRU**.
+- **If you care about local/short-term patterns:** **CNN** is a strong choice.
+- **For a simple deep learning baseline:** Use **RNN**.
+
+#### **For Policy Makers:**
+- Prefer interpretable models (ARIMA, SARIMA, Exponential Smoothing) for transparency.
+- Use deep learning models for highest accuracy if you can explain/justify their use.
+
+#### **For Researchers:**
+- Compare all models, report both accuracy and interpretability.
+- Use deep learning for complex, nonlinear, or long-memory data.
+
+#### **For Business Users:**
+- Use the model with the best test set performance, but monitor for overfitting.
+- Consider confidence intervals and diagnostics for risk management.
+
+---
+
+**No single model is always best.** Use the diagnostics, performance metrics, and your domain knowledge to select the most appropriate model for your needs.
+""") 
+
+# === Tab 5: Methodology & Code ===
+with tab5:
+    st.title("📝 Model Comparison Methodology & Code")
+    st.markdown("""
+    ## Overview
+    This tab explains the methodology used for comparing all forecasting models in this app. It covers the data split, fairness, evaluation metrics, and the actual code used for splitting and evaluation.
+    
+    ---
+    
+    ### 1. **Chronological Train/Test Split**
+    - The time series is split into a training set and a test set based on time order (not randomly).
+    - This simulates real-world forecasting, where you predict future values based on past data.
+    - **Example:**
+    ```python
+    test_pct = 20
+    test_size = int(len(series) * test_pct / 100)
+    train_size = len(series) - test_size
+    train_series = series.iloc[:train_size]
+    test_series = series.iloc[train_size:]
+    ```
+    - The same split is used for all models to ensure a fair comparison.
+    
+    ---
+    
+    ### 2. **Fairness and Consistency**
+    - All models are trained on the same training data and evaluated on the same test data.
+    - No model is allowed to see the test set during training or hyperparameter tuning.
+    - Deep learning models may use a validation split from the training set for early stopping, but the test set remains untouched until final evaluation.
+    
+    ---
+    
+    ### 3. **Evaluation Metrics**
+    - **RMSE (Root Mean Squared Error):** Measures average prediction error in original units.
+    - **MAE (Mean Absolute Error):** Average absolute error.
+    - **MAPE (Mean Absolute Percentage Error):** Average percentage error.
+    - **R² (Coefficient of Determination):** Proportion of variance explained.
+    - **AIC/BIC:** Used for statistical models to compare model fit and complexity.
+    
+    - **Example code for metrics:**
+    ```python
+    from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+    import numpy as np
+    rmse = np.sqrt(mean_squared_error(test_series, forecast))
+    mae = mean_absolute_error(test_series, forecast)
+    mape = np.mean(np.abs((test_series - forecast) / test_series)) * 100
+    r2 = r2_score(test_series, forecast)
+    ```
+    
+    ---
+    
+    ### 4. **Model Training and Forecasting**
+    - Each model is trained only on the training set.
+    - Forecasts are generated for the test set period and compared to actual values.
+    - **Example (ARIMA):**
+    ```python
+    import pmdarima as pm
+    model = pm.auto_arima(train_series, seasonal=True, m=4, stepwise=True)
+    forecast = model.predict(n_periods=test_size)
+    ```
+    - **Example (LSTM):**
+    ```python
+    from sklearn.preprocessing import MinMaxScaler
+    from tensorflow.keras.models import Sequential
+    from tensorflow.keras.layers import LSTM, Dense, Dropout
+    scaler = MinMaxScaler()
+    scaled = scaler.fit_transform(series.values.reshape(-1, 1)).flatten()
+    # ... create lagged data ...
+    model = Sequential([
+        LSTM(32, input_shape=(n_lags, 1)),
+        Dropout(0.2),
+        Dense(1)
+    ])
+    model.compile(optimizer='adam', loss='mse')
+    model.fit(X_train, y_train, epochs=50, batch_size=8, verbose=0)
+    forecast = model.predict(X_test).flatten()
+    forecast_inv = scaler.inverse_transform(forecast.reshape(-1, 1)).flatten()
+    ```
+    
+    ---
+    
+    ### 5. **Summary Table**
+    | Step                | Description                                                                 |
+    |---------------------|-----------------------------------------------------------------------------|
+    | Data Split          | Chronological (time-based), same for all models                             |
+    | Training            | Only on training set, no test set leakage                                   |
+    | Forecasting         | Predict test set period, compare to actuals                                 |
+    | Metrics             | RMSE, MAE, MAPE, R², AIC/BIC (where applicable)                             |
+    | Fairness            | Identical data and metrics for all models                                   |
+    | Visualization       | Tables, plots, and summary recommendations                                  |
+    
+    ---
+    
+    **This methodology ensures that your model comparison is fair, robust, and reflects real-world forecasting performance.**
+    """) 

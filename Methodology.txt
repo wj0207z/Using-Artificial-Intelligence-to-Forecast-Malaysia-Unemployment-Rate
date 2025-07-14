@@ -1,0 +1,182 @@
+Methodology for Malaysia Quarterly Unemployment Rate Forecasting
+===============================================================
+
+1. Overview Summary
+-------------------
+This project presents a robust, multi-model approach to forecasting Malaysia’s quarterly unemployment rate. The methodology integrates classical statistical models and advanced deep learning techniques to capture both linear and non-linear patterns, as well as seasonal and trend components in the data. The workflow is designed to ensure transparency, reproducibility, and high predictive accuracy. It encompasses data acquisition, preprocessing, feature engineering, model selection, training, validation, explainability, and comprehensive evaluation using multiple metrics and diagnostic tools.
+
+2. Dataset
+----------
+**Source:**
+- Malaysia Quarterly Labour Force Survey (2010–2024), official government statistics.
+
+**Description:**
+- **Frequency:** Quarterly (4 times per year)
+- **Time Span:** 2010 Q1 to 2024 Q4 (approx. 60 quarters)
+- **Observations:** 60 rows, each representing a quarter
+- **Columns/Features:**
+  - `date`: Quarter start date (YYYY-MM-DD)
+  - `lf`: Labour Force (thousands)
+  - `lf_employed`: Employed persons (thousands)
+  - `lf_unemployed`: Unemployed persons (thousands)
+  - `lf_outside`: Outside Labour Force (thousands)
+  - `p_rate`: Participation Rate (%)
+  - `ep_ratio`: Employment to Population Ratio (%)
+  - `u_rate`: Unemployment Rate (%)
+
+**Data Characteristics:**
+- **Units:** All counts in thousands, rates in percentages.
+- **Patterns:** Strong seasonality (quarterly cycles), long-term trend, and occasional structural breaks (e.g., economic shocks).
+- **Quality Checks:** Missing values are rare; outliers may occur during economic crises (e.g., COVID-19).
+
+**Preprocessing Steps:**
+- Convert `date` to datetime and set as index.
+- Sort chronologically.
+- Remove or impute missing values.
+- Detect and handle outliers (visual inspection, z-score, or IQR methods).
+- Ensure consistent frequency (no missing quarters).
+
+3. Training and Test Split
+--------------------------
+**Rationale:**
+- Time series data must be split chronologically to avoid lookahead bias.
+
+**Procedure:**
+- **Split Ratio:** 80% training, 20% testing (can be adjusted, e.g., 75/25 or 70/30 for sensitivity analysis).
+- **Training Set:** Used for model fitting and hyperparameter tuning.
+- **Test Set:** Reserved for out-of-sample evaluation, simulating future forecasting.
+
+**Implementation Example:**
+```python
+test_pct = 20
+test_size = int(len(series) * test_pct / 100)
+train_size = len(series) - test_size
+train_series = series.iloc[:train_size]
+test_series = series.iloc[train_size:]
+```
+- **Validation:** For deep learning, a further split of the training set (e.g., 20%) is used for validation during training (early stopping, hyperparameter tuning).
+
+**Consistency:**
+- The same split is used for all models to ensure fair comparison.
+
+4. Methods
+----------
+A. **Statistical Models**
+
+**ARIMA (AutoRegressive Integrated Moving Average):**
+- **Purpose:** Captures linear trends and short-term dependencies.
+- **Components:**
+  - `p`: Number of autoregressive terms (lags of the series)
+  - `d`: Number of differences to achieve stationarity
+  - `q`: Number of moving average terms (lags of forecast errors)
+- **Process:**
+  1. Test for stationarity (ADF test).
+  2. Difference the series if needed.
+  3. Use auto_arima to select optimal (p, d, q) via AIC/BIC.
+  4. Fit model on training data.
+  5. Diagnose residuals (ACF, PACF, normality, heteroskedasticity).
+  6. Forecast and evaluate on test set.
+
+**SARIMA (Seasonal ARIMA):**
+- **Purpose:** Extends ARIMA to model seasonality (quarterly cycles).
+- **Components:**
+  - Seasonal AR (P), differencing (D), MA (Q), period (m=4 for quarters)
+- **Process:**
+  1. Decompose series to check for seasonality.
+  2. Use auto_arima with seasonal=True, m=4.
+  3. Fit and validate as with ARIMA.
+
+**Exponential Smoothing (Holt-Winters):**
+- **Purpose:** Models level, trend, and seasonality using weighted averages.
+- **Variants:**
+  - Simple, Holt’s (trend), Holt-Winters (trend + seasonality)
+- **Process:**
+  1. Auto-select best variant based on AIC/BIC.
+  2. Fit model and extract smoothing parameters (alpha, beta, gamma).
+  3. Forecast and evaluate.
+
+B. **Machine Learning & Deep Learning Models**
+
+**LSTM (Long Short-Term Memory):**
+- **Purpose:** Captures long-term dependencies and non-linear patterns.
+- **Architecture:**
+  - Input: Sliding window of past n_lags quarters (e.g., 8)
+  - Layers: LSTM → Dropout → Dense
+  - Output: Next quarter’s value
+- **Training:**
+  - Data scaled to [0, 1] (MinMaxScaler)
+  - Early stopping on validation loss
+  - Hyperparameters: n_lags, units, dropout, epochs, batch size, learning rate
+
+**GRU (Gated Recurrent Unit):**
+- **Purpose:** Similar to LSTM but with fewer parameters (faster training).
+- **Architecture:**
+  - GRU → Dropout → Dense
+- **Training:**
+  - Same as LSTM, but with GRU cells.
+
+**RNN (Simple Recurrent Neural Network):**
+- **Purpose:** Baseline recurrent model for short-term dependencies.
+- **Architecture:**
+  - SimpleRNN → Dropout → Dense
+- **Limitations:**
+  - Prone to vanishing gradient, less effective for long-term patterns.
+
+**CNN (Convolutional Neural Network):**
+- **Purpose:** Captures local temporal patterns using convolutional filters.
+- **Architecture:**
+  - Conv1D → Dropout → Flatten → Dense
+- **Training:**
+  - Input: Sliding window of n_lags quarters
+  - Hyperparameters: filters, kernel size, dropout, epochs, batch size
+
+**General Deep Learning Training Steps:**
+- Prepare lagged input windows and scale data.
+- Split into train/validation/test sets.
+- Build model architecture.
+- Compile with Adam optimizer and MSE loss.
+- Train with early stopping.
+- Forecast recursively for multi-step prediction.
+
+C. **Model Explainability & Diagnostics**
+
+- **Explainability:**
+  - SHAP values (for deep learning) to assess lag importance.
+  - Permutation importance as fallback.
+  - Saliency maps (CNN) for gradient-based input sensitivity.
+- **Diagnostics:**
+  - Residual plots, ACF/PACF, Q-Q plots, histogram.
+  - Statistical tests: Jarque-Bera (normality), Ljung-Box (independence), Breusch-Pagan (heteroskedasticity).
+
+5. Evaluation
+-------------
+**Metrics Used:**
+- **RMSE (Root Mean Square Error):**
+  - Measures average magnitude of prediction error (lower is better).
+- **MAE (Mean Absolute Error):**
+  - Average absolute difference between predicted and actual values.
+- **MAPE (Mean Absolute Percentage Error):**
+  - Average percentage error, scale-independent.
+- **R² (Coefficient of Determination):**
+  - Proportion of variance explained by the model (closer to 1 is better).
+- **AIC/BIC:**
+  - Used for model selection in statistical models (lower is better).
+
+**Residual Diagnostics:**
+- **Normality:** Jarque-Bera test, Q-Q plot.
+- **Independence:** ACF/PACF, Ljung-Box test.
+- **Heteroskedasticity:** Breusch-Pagan test, residual plots.
+
+**Visualizations:**
+- Forecast vs. actual plots (with confidence intervals)
+- Residuals over time
+- ACF/PACF plots
+- Q-Q plots
+- Feature importance (SHAP, permutation, saliency)
+
+**Model Selection:**
+- Based on a combination of accuracy metrics, residual diagnostics, and interpretability.
+- Preference for models with well-behaved residuals and strong out-of-sample performance.
+
+**Reproducibility:**
+- All code, data splits, and results are documented for transparency and repeatability. 

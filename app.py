@@ -12,14 +12,13 @@ pages = {
         st.Page("ExponentialSmoothing.py", title="Exponential Smoothing"),
     ],
 
-    "Machine Learning Models": [
-        st.Page("RandonForest.py", title="Random Forest"),
-        st.Page("XGBoost.py", title="XGBoost"),
-        st.Page("SVR.py", title="Support Vector Regression"),
-    ],
-
     "Deep Learning Models": [
-        st.Page("LSTM.py", title="Long Short-Term Memory Networks")
+        st.Page("LSTM.py", title="Long Short-Term Memory Networks"),
+        st.Page("GRU.py", title="Gated Recurrent Unit Networks "),
+        st.Page("CNN.py", title="Convolutional Neural Networks  "),
+        st.Page("RNN.py", title="Recurrent Neural Networks ")
+
+
     ],
 
     "Model Comparison": [
@@ -27,6 +26,7 @@ pages = {
     ],
 
     "About": [
+        st.Page("ReadMe.py", title="📚 Read Me - Methodology & Models"),
         st.Page("Contact.py", title="Contact")
     ]
 }
