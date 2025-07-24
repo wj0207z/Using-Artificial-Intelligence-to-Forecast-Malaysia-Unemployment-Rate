@@ -7,14 +7,17 @@ wheel>=0.38.4
 # Now safely install pmdarima
 pmdarima==2.0.4
 
-# Then all your regular dependencies
+# Machine learning / deep learning
+tensorflow==2.13.0
+scikit-learn==1.3.0
+xgboost
+
+# Core packages
 streamlit
 pandas
 plotly
 streamlit-lottie
 requests
 statsmodels
-scikit-learn==1.3.0
-xgboost
 matplotlib
 scipy
