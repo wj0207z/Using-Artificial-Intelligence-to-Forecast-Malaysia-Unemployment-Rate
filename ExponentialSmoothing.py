@@ -60,7 +60,7 @@ This app automatically selects the best exponential smoothing method for your da
 
 # Model type selector
 model_type = st.selectbox("Select Exponential Smoothing Model:", 
-                         ["Auto-select", "Simple", "Holt's (Trend)", "Holt-Winters (Seasonal)"],
+                         ["Auto-select", "Holt-Winters (Seasonal)"],
                          help="Auto-select will choose the best model based on your data")
 
 # Seasonal period selector
@@ -76,23 +76,7 @@ def fit_exponential_smoothing(series, model_type, seasonal_period):
         # Try different models and select best one
         models = {}
         
-        # Simple Exponential Smoothing
-        try:
-            model_simple = ExponentialSmoothing(series, trend=None, seasonal=None)
-            fitted_simple = model_simple.fit()
-            models['Simple'] = fitted_simple
-        except:
-            pass
-        
-        # Holt's method (trend)
-        try:
-            model_holt = ExponentialSmoothing(series, trend='add', seasonal=None)
-            fitted_holt = model_holt.fit()
-            models['Holt'] = fitted_holt
-        except:
-            pass
-        
-        # Holt-Winters (seasonal)
+        # Only try Holt-Winters (seasonal)
         try:
             model_hw = ExponentialSmoothing(series, trend='add', seasonal='add', seasonal_periods=seasonal_period)
             fitted_hw = model_hw.fit()
@@ -105,20 +89,10 @@ def fit_exponential_smoothing(series, model_type, seasonal_period):
             best_model_name = min(models.keys(), key=lambda x: models[x].aic)
             return models[best_model_name], best_model_name
         else:
-            # Fallback to simple
-            model = ExponentialSmoothing(series, trend=None, seasonal=None)
+            # Fallback to Holt-Winters
+            model = ExponentialSmoothing(series, trend='add', seasonal='add', seasonal_periods=seasonal_period)
             fitted_model = model.fit()
-            return fitted_model, "Simple"
-    
-    elif model_type == "Simple":
-        model = ExponentialSmoothing(series, trend=None, seasonal=None)
-        fitted_model = model.fit()
-        return fitted_model, "Simple"
-    
-    elif model_type == "Holt's (Trend)":
-        model = ExponentialSmoothing(series, trend='add', seasonal=None)
-        fitted_model = model.fit()
-        return fitted_model, "Holt"
+            return fitted_model, "Holt-Winters"
     
     elif model_type == "Holt-Winters (Seasonal)":
         model = ExponentialSmoothing(series, trend='add', seasonal='add', seasonal_periods=seasonal_period)
@@ -546,37 +520,7 @@ with tab4:
     # Your model explanation
     st.subheader("🔍 Understanding Your Model")
     
-    if model_name == "Simple":
-        st.markdown(f"""
-        **📈 Your Simple Exponential Smoothing Model:**
-        
-        **Model Type**: Simple Exponential Smoothing
-        **Smoothing Parameter**: α = {model.params['smoothing_level']:.3f}
-        
-        **What this means:**
-        - **α = {model.params['smoothing_level']:.3f}**: {'High weight on recent observations' if model.params['smoothing_level'] > 0.5 else 'Balanced weight between recent and past observations' if model.params['smoothing_level'] > 0.2 else 'High weight on past observations'}
-        - **No trend modeling**: Assumes unemployment rate has no systematic trend
-        - **No seasonality**: Assumes no quarterly patterns
-        - **Simple and robust**: Good for stable time series
-        """)
-    
-    elif model_name == "Holt":
-        st.markdown(f"""
-        **📈 Your Holt's Method Model:**
-        
-        **Model Type**: Holt's Method (Double Exponential Smoothing)
-        **Level Parameter**: α = {model.params['smoothing_level']:.3f}
-        **Trend Parameter**: β = {model.params['smoothing_trend']:.3f}
-        
-        **What this means:**
-        - **α = {model.params['smoothing_level']:.3f}**: {'High weight on recent level' if model.params['smoothing_level'] > 0.5 else 'Balanced level smoothing' if model.params['smoothing_level'] > 0.2 else 'High weight on past level'}
-        - **β = {model.params['smoothing_trend']:.3f}**: {'High weight on recent trend' if model.params['smoothing_trend'] > 0.5 else 'Balanced trend smoothing' if model.params['smoothing_trend'] > 0.2 else 'High weight on past trend'}
-        - **Trend modeling**: Captures systematic changes in unemployment rate
-        - **No seasonality**: Assumes no quarterly patterns
-        - **Good for trending data**: Better than simple smoothing for trending series
-        """)
-    
-    elif model_name == "Holt-Winters":
+    if model_name == "Holt-Winters":
         st.markdown(f"""
         **📈 Your Holt-Winters Model:**
         

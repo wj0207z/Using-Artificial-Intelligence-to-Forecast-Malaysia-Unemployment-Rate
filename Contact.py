@@ -13,7 +13,7 @@ lottie_contact = load_lottie_url("https://assets10.lottiefiles.com/packages/lf20
 
 # Page settings
 st.set_page_config(page_title="Contact", page_icon="📞")
-st.title("📞 Contact Me")
+st.title("Contact Us")
 
 # === Tabs ===
 tab1, tab2, tab3 = st.tabs(["👤 About Me", "📬 Contact", "🔗 Socials"])
@@ -34,7 +34,11 @@ with tab1:
 
     st.divider()
     st.subheader("📍 Location")
-    st.components.v1.iframe("https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d15955.155197893058!2d101.6929093!3d3.1390038!2m3!1f0!2f0!3f0", height=300)
+    st.components.v1.iframe(
+        "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d15936.401525024936!2d101.59335513124522!3d3.0678400505259185!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x31cc4c8f5d98b46d%3A0xed55e2cca5c2d394!2sSunway%20University!5e0!3m2!1sen!2smy!4v1752486804926!5m2!1sen!2smy",
+        width=600,
+        height=300
+    )
 
 # === Tab 2: Contact Info ===
 with tab2:

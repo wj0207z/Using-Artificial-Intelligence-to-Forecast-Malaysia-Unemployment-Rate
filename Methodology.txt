@@ -3,7 +3,7 @@ Methodology for Malaysia Quarterly Unemployment Rate Forecasting
 
 1. Overview Summary
 -------------------
-This project presents a robust, multi-model approach to forecasting Malaysia’s quarterly unemployment rate. The methodology integrates classical statistical models and advanced deep learning techniques to capture both linear and non-linear patterns, as well as seasonal and trend components in the data. The workflow is designed to ensure transparency, reproducibility, and high predictive accuracy. It encompasses data acquisition, preprocessing, feature engineering, model selection, training, validation, explainability, and comprehensive evaluation using multiple metrics and diagnostic tools.
+This project implements a comprehensive, multi-model approach to forecasting Malaysia’s quarterly unemployment rate. The methodology integrates classical statistical models (ARIMA, SARIMA, Exponential Smoothing) and advanced deep learning architectures (LSTM, GRU, RNN, CNN) to capture both linear and non-linear, as well as seasonal and trend, components in the data. The workflow is designed for transparency, reproducibility, and high predictive accuracy, covering data acquisition, preprocessing, feature engineering, model selection, training, validation, explainability, and comprehensive evaluation using multiple metrics and diagnostic tools.
 
 2. Dataset
 ----------
@@ -12,7 +12,7 @@ This project presents a robust, multi-model approach to forecasting Malaysia’s
 
 **Description:**
 - **Frequency:** Quarterly (4 times per year)
-- **Time Span:** 2010 Q1 to 2024 Q4 (approx. 60 quarters)
+- **Time Span:** 2010 Q1 to 2024 Q4 (~60 quarters)
 - **Observations:** 60 rows, each representing a quarter
 - **Columns/Features:**
   - `date`: Quarter start date (YYYY-MM-DD)
@@ -28,13 +28,57 @@ This project presents a robust, multi-model approach to forecasting Malaysia’s
 - **Units:** All counts in thousands, rates in percentages.
 - **Patterns:** Strong seasonality (quarterly cycles), long-term trend, and occasional structural breaks (e.g., economic shocks).
 - **Quality Checks:** Missing values are rare; outliers may occur during economic crises (e.g., COVID-19).
+- **Data Consistency:** Data is checked for missing quarters, duplicate entries, and consistent formatting. All time series are sorted chronologically and indexed by date.
+- **Outlier Handling:** Outliers are detected using visual inspection, z-score, or IQR methods. Outliers during known economic shocks (e.g., COVID-19) are flagged and optionally imputed or left as-is for realism.
 
 **Preprocessing Steps:**
-- Convert `date` to datetime and set as index.
-- Sort chronologically.
-- Remove or impute missing values.
-- Detect and handle outliers (visual inspection, z-score, or IQR methods).
-- Ensure consistent frequency (no missing quarters).
+
+1. **Loading and Parsing Dates**
+   ```python
+   df = pd.read_csv("MalaysiaQuarterlyLabourForce.csv")
+   df['date'] = pd.to_datetime(df['date'])
+   df = df.sort_values('date')
+   df.set_index('date', inplace=True)
+   ```
+   - Loads the dataset, parses the date column, sorts chronologically, and sets the date as the index for time series operations.
+
+2. **Handling Missing Values**
+   - For all modeling, missing values are removed from the target series using:
+     ```python
+     series = df[selected_metric].dropna()
+     ```
+   - This ensures that the time series used for modeling contains no missing values. In practice, the official dataset is complete for the main indicators, so missing values are rare or nonexistent.
+   - If you want to check for missing values in the raw data, you can use:
+     ```python
+     print(df.isnull().sum())
+     ```
+
+3. **Outlier Handling**
+   - Outliers are not systematically removed in the modeling scripts, but can be detected using z-score or IQR methods if needed. For most analyses, all data points are retained to reflect real-world economic shocks (e.g., COVID-19).
+
+4. **Scaling (for Deep Learning Models)**
+   ```python
+   from sklearn.preprocessing import MinMaxScaler
+   scaler = MinMaxScaler()
+   series_scaled = scaler.fit_transform(series.values.reshape(-1, 1)).flatten()
+   ```
+   - Scaling to [0, 1] is essential for neural network stability and convergence.
+
+5. **Lag Feature Creation (for Deep Learning Models)**
+   ```python
+   def create_lagged_sequences(series, n_lags):
+       X, y = [], []
+       for i in range(n_lags, len(series)):
+           X.append(series[i-n_lags:i])
+           y.append(series[i])
+       return np.array(X), np.array(y)
+   ```
+   - Lagged input windows allow models to learn from previous time steps, capturing temporal dependencies.
+
+6. **Train/Test Split**
+   - Always performed chronologically to avoid lookahead bias, typically using an 80/20 split.
+
+*In summary: The preprocessing pipeline ensures clean, chronologically ordered, and complete time series for modeling. Missing values are not present in the final modeling data due to the use of `.dropna()`. Scaling and lag feature creation are applied as needed for deep learning models. Outliers are generally retained to reflect real-world events unless otherwise specified.*
 
 3. Training and Test Split
 --------------------------
@@ -42,9 +86,11 @@ This project presents a robust, multi-model approach to forecasting Malaysia’s
 - Time series data must be split chronologically to avoid lookahead bias.
 
 **Procedure:**
-- **Split Ratio:** 80% training, 20% testing (can be adjusted, e.g., 75/25 or 70/30 for sensitivity analysis).
+- **Split Ratio:** 80% training, 20% testing (adjustable for sensitivity analysis).
 - **Training Set:** Used for model fitting and hyperparameter tuning.
 - **Test Set:** Reserved for out-of-sample evaluation, simulating future forecasting.
+- **Validation:** For deep learning, a further split of the training set (e.g., 20%) is used for validation during training (early stopping, hyperparameter tuning).
+- **Consistency:** The same split is used for all models to ensure fair comparison.
 
 **Implementation Example:**
 ```python
@@ -54,113 +100,325 @@ train_size = len(series) - test_size
 train_series = series.iloc[:train_size]
 test_series = series.iloc[train_size:]
 ```
-- **Validation:** For deep learning, a further split of the training set (e.g., 20%) is used for validation during training (early stopping, hyperparameter tuning).
 
-**Consistency:**
-- The same split is used for all models to ensure fair comparison.
+4. Feature Engineering
+----------------------
+- **Lag Features:** For deep learning and some statistical models, lagged variables are created (e.g., previous 4–16 quarters) to provide temporal context.
+- **Seasonal Decomposition:** Trend, seasonal, and residual components are extracted using additive decomposition (e.g., `seasonal_decompose` from statsmodels).
+- **Scaling:** For neural networks, all features are scaled to [0, 1] using MinMaxScaler to ensure stable training.
+- **Sliding Windows:** For deep learning, input/output pairs are generated using a sliding window approach, where each input consists of `n_lags` previous quarters and the output is the next quarter’s value.
+- **Stationarity Testing:** Augmented Dickey-Fuller (ADF) test is used to check for stationarity. Differencing is applied as needed.
 
-4. Methods
-----------
+5. Modeling Approaches
+----------------------
 A. **Statistical Models**
 
 **ARIMA (AutoRegressive Integrated Moving Average):**
 - **Purpose:** Captures linear trends and short-term dependencies.
-- **Components:**
-  - `p`: Number of autoregressive terms (lags of the series)
-  - `d`: Number of differences to achieve stationarity
-  - `q`: Number of moving average terms (lags of forecast errors)
-- **Process:**
-  1. Test for stationarity (ADF test).
-  2. Difference the series if needed.
-  3. Use auto_arima to select optimal (p, d, q) via AIC/BIC.
-  4. Fit model on training data.
-  5. Diagnose residuals (ACF, PACF, normality, heteroskedasticity).
-  6. Forecast and evaluate on test set.
+- **Implementation:**
+  - Test for stationarity (ADF test).
+  - Difference the series if needed.
+  - Use `pmdarima.auto_arima` to select optimal (p, d, q) via AIC/BIC.
+  - Fit model on training data.
+  - Diagnose residuals (ACF, PACF, normality, heteroskedasticity).
+  - Forecast and evaluate on test set.
+- **Forecasting Code Example:**
+  ```python
+  import pmdarima as pm
+  model = pm.auto_arima(train_series, seasonal=False, stepwise=True)
+  forecast, conf_int = model.predict(n_periods=len(test_series), return_conf_int=True)
+  ```
+  *Fits ARIMA and generates forecasts with confidence intervals.*
+- **Diagnostics & Explainability:**
+  ```python
+  # Residuals
+  residuals = pd.Series(model.resid())
+
+  # ACF and PACF plots
+  from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
+  plot_acf(residuals)
+  plot_pacf(residuals)
+
+  # Ljung-Box test for independence
+  from statsmodels.stats.diagnostic import acorr_ljungbox
+  lb_test = acorr_ljungbox(residuals, lags=10, return_df=True)
+
+  # Jarque-Bera test for normality
+  from scipy.stats import jarque_bera
+  jb_stat, jb_pvalue = jarque_bera(residuals)
+  ```
+  *ACF/PACF plots show if residuals are autocorrelated (should not be for a good model). Ljung-Box p-value > 0.05 means residuals are independent. Jarque-Bera p-value > 0.05 means residuals are normally distributed.*
+- **Performance Metrics:**
+  ```python
+  from sklearn.metrics import mean_squared_error, r2_score
+  rmse = np.sqrt(mean_squared_error(test_series, forecast))
+  mape = np.mean(np.abs((test_series - forecast) / test_series)) * 100
+  r2 = r2_score(test_series, forecast)
+  ```
+  *RMSE, MAPE, and R² quantify forecast accuracy.*
 
 **SARIMA (Seasonal ARIMA):**
 - **Purpose:** Extends ARIMA to model seasonality (quarterly cycles).
-- **Components:**
-  - Seasonal AR (P), differencing (D), MA (Q), period (m=4 for quarters)
-- **Process:**
-  1. Decompose series to check for seasonality.
-  2. Use auto_arima with seasonal=True, m=4.
-  3. Fit and validate as with ARIMA.
+- **Implementation:**
+  - Decompose series to check for seasonality.
+  - Use `auto_arima` with `seasonal=True`, `m=4` (quarterly).
+  - Fit and validate as with ARIMA.
+  - Model selection via AIC/BIC, residual diagnostics.
+- **Forecasting Code Example:**
+  ```python
+  model = pm.auto_arima(train_series, seasonal=True, m=4, stepwise=True)
+  forecast, conf_int = model.predict(n_periods=len(test_series), return_conf_int=True)
+  ```
+  *Fits SARIMA with quarterly seasonality.*
+- **Diagnostics & Explainability:**
+  ```python
+  from statsmodels.tsa.seasonal import seasonal_decompose
+  decomposition = seasonal_decompose(series, model='additive', period=4)
+  decomposition.plot()
+  ```
+  *Seasonal decomposition helps confirm the presence and strength of seasonal patterns.*
+  - Use ACF/PACF and statistical tests as in ARIMA for residuals.
+- **Forecasting Code Example:**
+  ```python
+  # SARIMA.py
+  import pmdarima as pm
+  model = pm.auto_arima(train_series, seasonal=True, m=4, stepwise=True)
+  forecast, conf_int = model.predict(n_periods=len(test_series), return_conf_int=True)
+  ```
+  *This code fits a SARIMA model with quarterly seasonality and forecasts the test set, including confidence intervals.*
+- **Diagnostics:** Same as ARIMA, with additional focus on seasonal lags in ACF/PACF.
+- **Hyperparameters:**
+  - `P`, `D`, `Q`: Seasonal AR, differencing, MA terms
+  - `m`: Seasonal period (4 for quarters)
+- **Forecasting:**
+  - Out-of-sample forecasts with confidence intervals.
 
 **Exponential Smoothing (Holt-Winters):**
 - **Purpose:** Models level, trend, and seasonality using weighted averages.
-- **Variants:**
-  - Simple, Holt’s (trend), Holt-Winters (trend + seasonality)
-- **Process:**
-  1. Auto-select best variant based on AIC/BIC.
-  2. Fit model and extract smoothing parameters (alpha, beta, gamma).
-  3. Forecast and evaluate.
+- **Implementation:**
+  - Auto-select best variant (Simple, Holt’s, Holt-Winters) based on AIC/BIC.
+  - Fit model and extract smoothing parameters (alpha, beta, gamma).
+  - Forecast and evaluate.
+- **Forecasting Code Example:**
+  ```python
+  # ExponentialSmoothing.py
+  from statsmodels.tsa.holtwinters import ExponentialSmoothing
+  model = ExponentialSmoothing(train_series, trend='add', seasonal='add', seasonal_periods=4)
+  fit = model.fit()
+  forecast = fit.forecast(steps=len(test_series))
+  ```
+  *This code fits a Holt-Winters model and forecasts the next quarters, matching the test set length.*
+- **Diagnostics:**
+  ```python
+  print(fit.summary())
+  # Residual analysis
+  residuals = fit.resid
+  plot_acf(residuals)
+  plot_pacf(residuals)
+  ```
+  *Model summary provides smoothing parameters and fit statistics. Residual plots check for independence and normality.*
+- **Hyperparameters:**
+  - `alpha`: Level smoothing
+  - `beta`: Trend smoothing
+  - `gamma`: Seasonal smoothing
+- **Forecasting:**
+  - Out-of-sample forecasts with approximate confidence intervals.
 
-B. **Machine Learning & Deep Learning Models**
+B. **Deep Learning Models**
 
 **LSTM (Long Short-Term Memory):**
 - **Purpose:** Captures long-term dependencies and non-linear patterns.
-- **Architecture:**
-  - Input: Sliding window of past n_lags quarters (e.g., 8)
-  - Layers: LSTM → Dropout → Dense
-  - Output: Next quarter’s value
-- **Training:**
-  - Data scaled to [0, 1] (MinMaxScaler)
-  - Early stopping on validation loss
-  - Hyperparameters: n_lags, units, dropout, epochs, batch size, learning rate
+- **Implementation:**
+  - Input: Sliding window of past `n_lags` quarters (e.g., 8).
+  - Layers: LSTM → Dropout → Dense.
+  - Data scaled to [0, 1] (MinMaxScaler).
+  - Early stopping on validation loss.
+  - Hyperparameters: `n_lags`, units, dropout, epochs, batch size, learning rate.
+  - Recursive multi-step forecasting.
+- **Forecasting Code Example:**
+  ```python
+  # LSTM.py
+  from keras.models import Sequential
+  from keras.layers import LSTM, Dense, Dropout
+  model = Sequential([
+      LSTM(units=50, input_shape=(n_lags, 1)),
+      Dropout(0.2),
+      Dense(1)
+  ])
+  model.compile(optimizer='adam', loss='mse')
+  model.fit(X_train, y_train, epochs=100, batch_size=8, validation_split=0.2)
+  # Recursive forecasting
+  preds = []
+  last_window = X_test[0]
+  for _ in range(len(y_test)):
+      pred = model.predict(last_window.reshape(1, n_lags, 1))
+      preds.append(pred[0,0])
+      last_window = np.roll(last_window, -1)
+      last_window[-1] = pred
+  ```
+  *Builds, trains, and recursively forecasts with LSTM.*
+- **Diagnostics & Explainability:**
+  ```python
+  # Residuals and metrics
+  residuals = y_test_actual - y_pred
+  rmse = np.sqrt(mean_squared_error(y_test_actual, y_pred))
+  mape = np.mean(np.abs((y_test_actual - y_pred) / y_test_actual)) * 100
+  r2 = r2_score(y_test_actual, y_pred)
+
+  # SHAP for feature (lag) importance
+  import shap
+  explainer = shap.DeepExplainer(model, X_train[:100])
+  shap_values = explainer.shap_values(X_test[:10])
+  shap.summary_plot(shap_values, X_test[:10])
+  ```
+  *SHAP values show which lags (quarters) most influence the forecast. Residual plots and metrics assess accuracy and error distribution.*
+- **Hyperparameters:**
+  - `n_lags`: Number of past quarters used as input
+  - `n_units`: Number of LSTM units
+  - `dropout`: Dropout rate for regularization
+  - `epochs`: Number of training epochs
+  - `batch_size`: Batch size for training
+  - `learning_rate`: Learning rate for optimizer
+  - `val_split`: Fraction of training data for validation
+- **Forecasting:**
+  - Recursive multi-step forecasting using last `n_lags` predictions as input for each step.
 
 **GRU (Gated Recurrent Unit):**
 - **Purpose:** Similar to LSTM but with fewer parameters (faster training).
-- **Architecture:**
-  - GRU → Dropout → Dense
-- **Training:**
-  - Same as LSTM, but with GRU cells.
+- **Implementation:** Same as LSTM, but with GRU cells.
+- **Forecasting Code Example:**
+  ```python
+  # GRU.py
+  from keras.models import Sequential
+  from keras.layers import GRU, Dense, Dropout
+  model = Sequential([
+      GRU(units=50, input_shape=(n_lags, 1)),
+      Dropout(0.2),
+      Dense(1)
+  ])
+  model.compile(optimizer='adam', loss='mse')
+  model.fit(X_train, y_train, epochs=100, batch_size=8, validation_split=0.2)
+  # Recursive forecasting as in LSTM
+  preds = []
+  last_window = X_test[0]
+  for _ in range(len(y_test)):
+      pred = model.predict(last_window.reshape(1, n_lags, 1))
+      preds.append(pred[0,0])
+      last_window = np.roll(last_window, -1)
+      last_window[-1] = pred
+  ```
+  *Same diagnostics and explainability as LSTM.*
+- **Diagnostics:** Same as LSTM.
+- **Hyperparameters:**
+  - `n_lags`, `n_units`, `dropout`, `epochs`, `batch_size`, `learning_rate`, `val_split`
+- **Forecasting:**
+  - Recursive multi-step forecasting.
 
 **RNN (Simple Recurrent Neural Network):**
 - **Purpose:** Baseline recurrent model for short-term dependencies.
-- **Architecture:**
-  - SimpleRNN → Dropout → Dense
-- **Limitations:**
+- **Implementation:**
+  - SimpleRNN → Dropout → Dense.
   - Prone to vanishing gradient, less effective for long-term patterns.
+- **Forecasting Code Example:**
+  ```python
+  # RNN.py
+  from keras.models import Sequential
+  from keras.layers import SimpleRNN, Dense, Dropout
+  model = Sequential([
+      SimpleRNN(units=50, input_shape=(n_lags, 1)),
+      Dropout(0.2),
+      Dense(1)
+  ])
+  model.compile(optimizer='adam', loss='mse')
+  model.fit(X_train, y_train, epochs=100, batch_size=8, validation_split=0.2)
+  # Recursive forecasting as in LSTM/GRU
+  preds = []
+  last_window = X_test[0]
+  for _ in range(len(y_test)):
+      pred = model.predict(last_window.reshape(1, n_lags, 1))
+      preds.append(pred[0,0])
+      last_window = np.roll(last_window, -1)
+      last_window[-1] = pred
+  ```
+  *Diagnostics: Residuals, Q-Q plots, PACF, actual vs predicted, and metrics as above.*
+- **Diagnostics:** Residuals, Q-Q plots, PACF, actual vs predicted.
+- **Hyperparameters:**
+  - `n_lags`, `n_units`, `dropout`, `epochs`, `batch_size`, `learning_rate`, `val_split`
+- **Forecasting:**
+  - Recursive multi-step forecasting.
 
 **CNN (Convolutional Neural Network):**
 - **Purpose:** Captures local temporal patterns using convolutional filters.
-- **Architecture:**
-  - Conv1D → Dropout → Flatten → Dense
-- **Training:**
-  - Input: Sliding window of n_lags quarters
-  - Hyperparameters: filters, kernel size, dropout, epochs, batch size
-
-**General Deep Learning Training Steps:**
-- Prepare lagged input windows and scale data.
-- Split into train/validation/test sets.
-- Build model architecture.
-- Compile with Adam optimizer and MSE loss.
-- Train with early stopping.
-- Forecast recursively for multi-step prediction.
-
-C. **Model Explainability & Diagnostics**
-
+- **Implementation:**
+  - Conv1D → Dropout → Flatten → Dense.
+  - Input: Sliding window of `n_lags` quarters.
+  - Hyperparameters: filters, kernel size, dropout, epochs, batch size.
+  - Recursive multi-step forecasting.
+- **Forecasting Code Example:**
+  ```python
+  # CNN.py
+  from keras.models import Sequential
+  from keras.layers import Conv1D, Flatten, Dense, Dropout
+  model = Sequential([
+      Conv1D(filters=32, kernel_size=3, activation='relu', input_shape=(n_lags, 1)),
+      Dropout(0.2),
+      Flatten(),
+      Dense(1)
+  ])
+  model.compile(optimizer='adam', loss='mse')
+  model.fit(X_train, y_train, epochs=100, batch_size=8, validation_split=0.2)
+  # Recursive forecasting as in other deep models
+  ```
 - **Explainability:**
-  - SHAP values (for deep learning) to assess lag importance.
-  - Permutation importance as fallback.
-  - Saliency maps (CNN) for gradient-based input sensitivity.
+  ```python
+  # SHAP for lag importance
+  import shap
+  explainer = shap.DeepExplainer(model, X_train[:100])
+  shap_values = explainer.shap_values(X_test[:10])
+  shap.summary_plot(shap_values, X_test[:10])
+
+  # Permutation importance (fallback)
+  import numpy as np
+  importances = np.zeros(n_lags)
+  base_pred = model.predict(X_test).flatten()
+  base_rmse = np.sqrt(np.mean((y_test - base_pred) ** 2))
+  for i in range(n_lags):
+      X_test_perm = X_test.copy()
+      np.random.shuffle(X_test_perm[:, i, 0])
+      perm_pred = model.predict(X_test_perm).flatten()
+      perm_rmse = np.sqrt(np.mean((y_test - perm_pred) ** 2))
+      importances[i] = perm_rmse - base_rmse
+  ```
+  *SHAP and permutation importance show which lags are most influential for CNN forecasts.*
+- **Diagnostics:** Residuals, actual vs predicted, feature importance (SHAP/permutation), saliency maps.
+- **Hyperparameters:**
+  - `n_lags`: Number of past quarters used as input
+  - `n_filters`: Number of convolutional filters
+  - `kernel_size`: Width of convolutional filter
+  - `dropout`: Dropout rate
+  - `epochs`, `batch_size`, `learning_rate`, `val_split`
+- **Forecasting:**
+  - Recursive multi-step forecasting.
+
+6. Model Explainability & Diagnostics
+-------------------------------------
+- **Explainability:**
+  - **Statistical Models:** ACF/PACF to interpret lag importance.
+  - **Deep Learning:** SHAP values, permutation importance, saliency maps for lag/feature importance.
 - **Diagnostics:**
   - Residual plots, ACF/PACF, Q-Q plots, histogram.
   - Statistical tests: Jarque-Bera (normality), Ljung-Box (independence), Breusch-Pagan (heteroskedasticity).
+  - For deep learning, actual vs predicted scatter plots and residual analysis.
+  - For CNN, feature importance is visualized using SHAP or permutation importance, and saliency maps highlight which lags most influence predictions.
 
-5. Evaluation
+7. Evaluation
 -------------
 **Metrics Used:**
-- **RMSE (Root Mean Square Error):**
-  - Measures average magnitude of prediction error (lower is better).
-- **MAE (Mean Absolute Error):**
-  - Average absolute difference between predicted and actual values.
-- **MAPE (Mean Absolute Percentage Error):**
-  - Average percentage error, scale-independent.
-- **R² (Coefficient of Determination):**
-  - Proportion of variance explained by the model (closer to 1 is better).
-- **AIC/BIC:**
-  - Used for model selection in statistical models (lower is better).
+- **RMSE (Root Mean Square Error):** Average magnitude of prediction error.
+- **MAE (Mean Absolute Error):** Average absolute difference between predicted and actual values.
+- **MAPE (Mean Absolute Percentage Error):** Average percentage error, scale-independent.
+- **R² (Coefficient of Determination):** Proportion of variance explained by the model.
+- **AIC/BIC:** Used for model selection in statistical models.
 
 **Residual Diagnostics:**
 - **Normality:** Jarque-Bera test, Q-Q plot.
@@ -168,15 +426,32 @@ C. **Model Explainability & Diagnostics**
 - **Heteroskedasticity:** Breusch-Pagan test, residual plots.
 
 **Visualizations:**
-- Forecast vs. actual plots (with confidence intervals)
-- Residuals over time
-- ACF/PACF plots
-- Q-Q plots
-- Feature importance (SHAP, permutation, saliency)
+- Forecast vs. actual plots (with confidence intervals).
+- Residuals over time.
+- ACF/PACF plots.
+- Q-Q plots.
+- Feature importance (SHAP, permutation, saliency).
 
 **Model Selection:**
 - Based on a combination of accuracy metrics, residual diagnostics, and interpretability.
 - Preference for models with well-behaved residuals and strong out-of-sample performance.
 
-**Reproducibility:**
-- All code, data splits, and results are documented for transparency and repeatability. 
+8. Reproducibility
+------------------
+- All code, data splits, and results are documented for transparency and repeatability.
+- Hyperparameters, random seeds, and data splits are fixed for fair comparison.
+- All model training and evaluation steps are automated and reproducible.
+
+9. Best Practices & Limitations
+-------------------------------
+- **Best Practices:**
+  - Always scale data for deep learning models.
+  - Use early stopping and dropout to prevent overfitting.
+  - Tune hyperparameters for each model.
+  - Validate with out-of-sample data.
+  - Use diagnostics to guide model selection and improvement.
+- **Limitations:**
+  - Deep learning models require more data and computation.
+  - Statistical models assume linearity and stationarity.
+  - Confidence intervals are approximate for deep learning.
+  - All models are sensitive to outliers and structural breaks. 
