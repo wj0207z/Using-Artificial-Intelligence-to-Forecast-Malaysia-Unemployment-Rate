@@ -1,13 +1,13 @@
-# Build dependencies required before pmdarima
+# These must come first to build pmdarima correctly
 numpy
 Cython
 setuptools
 wheel
 
-# pmdarima (should come after the above)
-pmdarima
+# Now safely install pmdarima
+pmdarima==2.0.4
 
-# Your original packages (order doesn’t matter much here)
+# Then all your regular dependencies
 streamlit
 pandas
 plotly
