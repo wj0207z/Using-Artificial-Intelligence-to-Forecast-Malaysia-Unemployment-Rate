@@ -1,6 +1,15 @@
+# Build dependencies required before pmdarima
+numpy
+Cython
+setuptools
+wheel
+
+# pmdarima (should come after the above)
+pmdarima
+
+# Your original packages (order doesn’t matter much here)
 streamlit
 pandas
-numpy
 plotly
 streamlit-lottie
 requests
@@ -9,4 +18,3 @@ scikit-learn
 xgboost
 matplotlib
 scipy
-
