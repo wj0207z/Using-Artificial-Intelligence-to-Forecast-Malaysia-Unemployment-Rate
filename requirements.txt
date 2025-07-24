@@ -4,9 +4,9 @@ numpy
 plotly
 streamlit-lottie
 requests
-pmdarima==2.0.4
 statsmodels
 scikit-learn
 xgboost
 matplotlib
 scipy
+
